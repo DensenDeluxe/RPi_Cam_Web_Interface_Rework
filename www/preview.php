@@ -1,515 +1,372 @@
 <?php
-   define('BASE_DIR', dirname(__FILE__));
-   require_once(BASE_DIR.'/config.php');
-  
-   //Text labels here
-   define('BTN_DOWNLOAD', 'Download');
-   define('BTN_DELETE', 'Delete');
-   define('BTN_DELETE_CONFIRM', 'Are you sure you want to delete this file?');
-   define('BTN_CONVERT', 'Start Convert');
-   define('BTN_DELETEALL', 'Delete All');
-   define('BTN_DELETEALL_CONFIRM', 'Are you sure you want to delete all items?');
-   define('BTN_DELETESEL', 'Delete Selected');
-   define('BTN_DELETESEL_CONFIRM', 'Are you sure you want to delete selected items?');
-   define('BTN_SELECTALL', 'Select All');
-   define('BTN_SELECTNONE', 'Deselect');
-   define('BTN_GETZIP', 'Get Zip');
-   define('BTN_LOCKSEL', 'Lock Sel');
-   define('BTN_UNLOCKSEL', 'Unlock Selected');
-   define('BTN_UPDATESIZEORDER', 'Update');
-   define('TXT_PREVIEW', 'Preview');
-   define('TXT_THUMB', 'Thumb');
-   define('TXT_FILES', 'Files');
-   
-   define('CONVERT_CMD', 'convertCmd.txt');
-   
-   //Set to top or bottom to position controls
-   define('CONTROLS_POS', 'top');
-   
-   //Set size defaults and try to get from cookies
-   $previewSize = 640;
-   $thumbSize = 96;
-   $sortOrder = 1;
-   $showTypes = 1;
-   $timeFilter = 1;
-   $timeFilterMax = 8;
-   if(isset($_COOKIE["previewSize"])) {
-      $previewSize = $_COOKIE["previewSize"];
-   }
-   if(isset($_COOKIE["thumbSize"])) {
-      $thumbSize = $_COOKIE["thumbSize"];
-   }
-   if(isset($_COOKIE["sortOrder"])) {
-      $sortOrder = $_COOKIE["sortOrder"];
-   }
-   if(isset($_COOKIE["showTypes"])) {
-      $showTypes = $_COOKIE["showTypes"];
-   }
-   if(isset($_COOKIE["timeFilter"])) {
-      $timeFilter = $_COOKIE["timeFilter"];
-   }
-   $dSelect = "";
-   $pFile = "";
-   $tFile = "";
-   $debugString = "";
-   
-   if(isset($_GET['preview'])) {
-      $tFile = $_GET['preview'];
-      $pFile = dataFilename($tFile);
-   }
+	define('BASE_DIR', dirname(__FILE__));
+	require_once(BASE_DIR . '/config.php');
+	require_once(BASE_DIR . '/ui.php');
 
-   $zipname = false;
-   $user = getUser();
-   $userLevel = getUserLevel($user);
-   //Process any POST data
-   if (isset($_POST['timeFilter'])){
-	   $timeFilter = $_POST['timeFilter'];
-	   setcookie("timeFilter", $timeFilter, time() + (86400 * 365), "/");
-   }
-   if (isset($_POST['sortOrder'])){
-	   $sortOrder = $_POST['sortOrder'];
-	   setcookie("sortOrder", $sortOrder, time() + (86400 * 365), "/");
-   }
-   if (isset($_POST['showTypes'])){
-	   $showTypes = $_POST['showTypes'];
-	   setcookie("showTypes", $showTypes, time() + (86400 * 365), "/");
-   }
-   if (isset($_POST['delete1']) && checkMediaPath($_POST['delete1'])) {
-	 deleteFile($_POST['delete1']);
-     maintainFolders(MEDIA_PATH, false, false);
-   } else if (isset($_POST['convert'])) {
-      $tFile = $_POST['convert'];
-      startVideoConvert($tFile);
-      $tFile = "";
-   } else if (isset($_POST['download1'])  && checkMediaPath($_POST['download1'])) {
-      $dFile = $_POST['download1'];
-      if(getFileType($dFile) != 't') {
-         $dxFile = dataFilename($dFile);
-         if(dataFileext($dFile) == "jpg") {
-            header("Content-Type: image/jpeg");
-         } else {
-            header("Content-Type: video/mp4");
-         }
-         header("Content-Disposition: attachment; filename=\"" . dataFilename($dFile) . "\"");
-         readfile(MEDIA_PATH . "/$dxFile");
-         return;
-      } else {
-         $zipname = getZip(array($dFile));
-      }
-   } else if (isset($_POST['action'])){
-      //global commands
-      switch($_POST['action']) {
-         case 'deleteAll':
-            maintainFolders(MEDIA_PATH, true, true);
-            break;
-         case 'selectAll':
-            $dSelect = "checked";
-            break;
-         case 'selectNone':
-            $dSelect = "";
-            break;
-         case 'deleteSel':
-            if(!empty($_POST['check_list'])) {
-               foreach($_POST['check_list'] as $check) {
-                  if (checkMediaPath($check)) {
-					  deleteFile($check);
-				  }
-               }
-            }        
-            maintainFolders(MEDIA_PATH, false, false);
-            break;
-         case 'lockSel':
-            if(!empty($_POST['check_list'])) {
-               foreach($_POST['check_list'] as $check) {
-                  if (checkMediaPath($check)) {
-					  lockFile($check, 1);
-				  }
-               }
-            }        
-            break;
-         case 'unlockSel':
-            if(!empty($_POST['check_list'])) {
-               foreach($_POST['check_list'] as $check) {
-                  if (checkMediaPath($check)) {
-					  lockFile($check, 0);
-				  }
-               }
-            }        
-            break;
-         case 'updateSizeOrder':
-            if(!empty($_POST['previewSize'])) {
-               $previewSize = $_POST['previewSize'];
-               $previewSize = max($previewSize,100);
-			   $previewSize = min($previewSize, 1920);
-               setcookie("previewSize", $previewSize, time() + (86400 * 365), "/");
-            }        
-            if(!empty($_POST['thumbSize'])) {
-               $thumbSize = $_POST['thumbSize'];
-               $thumbSize = max($thumbSize, 32);
-			   $thumbSize = min($thumbSize, 320);
-               setcookie("thumbSize", $thumbSize, time() + (86400 * 365), "/");
-            }        
-            break;
-         case 'zipSel':
-            if (!empty($_POST['check_list'])) {
-                getZip($_POST['check_list']);
-                return;
-            }
-            echo "No files selected to zip."; 
-            break;
-      }
-   }
-   
-   function pvDisplayStyle($style) {
-	 global $userLevel;
-	 if ((int)$userLevel < (int)USERLEVEL_MEDIUM)
-	   return "style='display:none;'";
-     else if(strlen($style) > 0)
-	   return "style='$style'";
-     else
-	   return '';
-   }
-   
-   function checkMediaPath($path) {
-	   return ((realpath(dirname(MEDIA_PATH . "/$path")) == realpath(MEDIA_PATH)) && file_exists(MEDIA_PATH . "/$path"));
-   }
-  
-   function getZip($files) {
-      $zipname = 'cam_' . date("Ymd_His") . '.zip';
-      $cmd = 'zip -0 -q -'; // Don't compress!
-      $size = 1000000;
-      foreach ($files as $file) {
-		 if(checkMediaPath($file)) {
-           $t = getFileType($file);
-           if ($t == 't') {
-              $lapses = findLapseFiles($file);
-              if (!empty($lapses)) {
-                foreach($lapses as $lapse) {
-                  $cmd .= " $lapse";
-                  $size += filesize($lapse);
-                }
-              }
-           } else if ($t == 'v' || $t == 'i') {
-              $base = dataFilename($file);
-              $f = MEDIA_PATH . "/$base";
-              if (file_exists($f)) {
-                $cmd .= " $f";
-                $size += filesize($f);
-              }
-              $f = MEDIA_PATH . "/$base.dat";
-              if ($t == 'v' && file_exists($f)) {
-                $cmd .= " $f";
-                $size += filesize($f);
-              }
-           }
-		 }
-      }
-      writeLog("Generating ZIP using command: $cmd ($size bytes)");
+	define('CONVERT_CMD', 'convertCmd.txt');
+	define('AGE_FILTER_MAX', 8);
 
-      header("Content-Type: application/zip");
-      header("Content-Disposition: attachment; filename=\"".$zipname."\"");
-      //header("Content-Length: " . $size); // not working (yet)
+	requireUserLevel(USERLEVEL_MINP);
+	$canEdit = currentUserLevel() >= (int)USERLEVEL_MEDIUM;
 
-      $zipStream = popen($cmd, "r");
-      fpassthru($zipStream);
-      pclose($zipStream);
-      flush();
-   }
+	// ---------- view options (query string, remembered in cookies) ----------
+	function viewOption($name, $allowed, $default) {
+		$value = isset($_GET[$name]) ? $_GET[$name] : (isset($_COOKIE['media_' . $name]) ? $_COOKIE['media_' . $name] : $default);
+		if (!in_array((string)$value, $allowed, true)) $value = $default;
+		if (isset($_GET[$name])) setcookie('media_' . $name, $value, time() + 86400 * 365, '/');
+		return $value;
+	}
+	$showType = viewOption('type', array('all', 'images', 'videos'), 'all');
+	$sortOrder = viewOption('sort', array('newest', 'oldest'), 'newest');
+	$ageFilter = (int)viewOption('age', array('1', '2', '3', '4', '5', '6', '7', '8'), '1');
 
-   function startVideoConvert($bFile) {
-      global $debugString;
-	  if(checkMediaPath($bFile)) { 
-	    $ft = getFileType($bFile);
-	    $fi = getFileIndex($bFile);
-	    if($ft =='t' && is_numeric($fi)) {
-		  $tFiles = findLapseFiles($bFile);
-		  $tmp = BASE_DIR . '/' . MEDIA_PATH . '/' . $ft . $fi;
-		  if (!file_exists($tmp)) {
-			 mkdir($tmp, 0777, true);
-		  }
-		  $i= 0;
-		  foreach($tFiles as $tFile) {
-			 symlink($tFile, $tmp . '/' . sprintf('i_%05d', $i) . '.jpg');
-			 $i++;
-		  }
-		  $vFile = substr(dataFilename($bFile), 0, -3) . 'mp4';
-		  $fp = fopen(BASE_DIR . '/' . CONVERT_CMD, 'r');
-		  $cmd = trim(fgets($fp));
-		  fclose($fp);
-		  $cmd = "(" . str_replace("i_%05d", "$tmp/i_%05d", $cmd) . " " . BASE_DIR . '/' . MEDIA_PATH . "/$vFile ; rm -rf $tmp;) >/dev/null 2>&1 &";
-		  writeLog("start lapse convert:$cmd");
-		  system($cmd);
-		  copy(MEDIA_PATH . "/$bFile", MEDIA_PATH . '/' . $vFile . '.v' . getFileIndex($bFile) .THUMBNAIL_EXT);
-		  writeLog("Convert finished");
-	    }
-	  }
-   }
+	function checkMediaPath($path) {
+		$path = (string)$path;
+		return $path !== '' && strpos($path, '/') === false && strpos($path, "\0") === false
+			&& isThumbnail($path) && file_exists(BASE_DIR . '/' . MEDIA_PATH . "/$path");
+	}
 
-
-   // function to deletes files and folders recursively
-   // $deleteMainFiles true r false to delete files from the top level folder
-   // $deleteSubFiles true or false to delete files from subfolders
-   // Empty subfolders get removed.
-   // $root true or false. If true (default) then top dir not removed
-   function maintainFolders($path, $deleteMainFiles, $deleteSubFiles, $root = true) {
-      $empty=true;
-      foreach (glob("$path/*") as $file) {
-         if (is_dir($file)) {
-            if (!maintainFolders($file, $deleteMainFiles, $deleteSubFiles, false)) $empty=false;
-         }  else {
-            if (($deleteSubFiles && !$root) || ($deleteMainFiles && $root)) {
-              if(is_writeable($file)) unlink($file);
-            } else {
-               $empty=false;
-            }
-         }
-      }
-      return $empty && !$root && rmdir($path);
-   }
-   
-   //function to draw 1 file on the page
-   function drawFile($f, $ts, $sel) {
-      $fType = getFileType($f);
-      $rFile = dataFilename($f);
-      $fNumber = getFileIndex($f);
-      $lapseCount = "";
-      switch ($fType) {
-         case 'v': $fIcon = 'video.png'; break;
-         case 't': 
-            $fIcon = 'timelapse.png';
-            $lapseCount = '(' . count(findLapseFiles($f)). ')';
-            break;
-         case 'i': $fIcon = 'image.png'; break;
-         default : $fIcon = 'image.png'; break;
-      }
-      $duration ='';
-      if (file_exists(MEDIA_PATH . "/$rFile")) {
-         $fsz = round ((filesize_n(MEDIA_PATH . "/$rFile")) / 1024);
-         $fModTime = filemtime(MEDIA_PATH . "/$rFile");
-         if ($fType == 'v') {
-            $duration = ($fModTime - filemtime(MEDIA_PATH . "/$f")) . 's';
-         }
-      } else {
-         $fsz = 0;
-         $fModTime = filemtime(MEDIA_PATH . "/$f");
-      }
-      $fDate = @date('Y-m-d', $fModTime);
-      $fTime = @date('H:i:s', $fModTime);
-      $fWidth = max($ts + 4, 150);
-      echo "<fieldset class='fileicon' style='width:" . $fWidth . "px;'>";
-      echo "<legend class='fileicon'>";
-	  if(is_writeable(MEDIA_PATH . "/$f")) {
-		echo "<button type='submit' name='delete1' value='$f' class='fileicondelete' " . pvDisplayStyle("background-image:url(delete.png);") . " onclick='return confirm(\"".BTN_DELETE_CONFIRM."\");'></button>";
-	  } 
-      echo "&nbsp;&nbsp;<a target=\"_blank\" href=\"" . MEDIA_PATH . "/$rFile\">$fNumber</a>&nbsp;";
-      echo "<img src='$fIcon' style='width:24px'/>";
-      echo "<input type='checkbox' name='check_list[]' $sel value='$f' " . pvDisplayStyle("float:right;") . "/>";
-      echo "</legend>";
-	   
-     if ($fsz > 0) {
-	      if($fsz > 1024) {
-	    	 echo round($fsz/1024) . " MB";
-	      } else {
-	     	 echo "$fsz KB";
-	      }
-	      echo " $lapseCount $duration";
-      } else {
-	      echo 'Busy';
-      }
-      echo "<br>$fDate<br>$fTime<br>";
-      if ($fsz > 0) echo "<a title='$rFile' href='#' onclick='load_preview(\"$f\");'>";
-      echo "<img src='" . MEDIA_PATH . "/$f' style='width:" . $ts . "px'/>";
-      if ($fsz > 0) echo "</a>";
-      echo "</fieldset> ";
-   }
-   
-   function getThumbnails() {
-      global $sortOrder;
-      global $showTypes;
-      global $timeFilter, $timeFilterMax;
-      //$files = scandir(MEDIA_PATH, $sortOrder - 1);
-      $files = scandir(MEDIA_PATH);
-      $thumbnails = array();
-      $nowTime = time();
-      foreach($files as $file) {
-         if($file != '.' && $file != '..' && isThumbnail($file)) {
-			 $fTime = filemtime(MEDIA_PATH . "/$file");
-            if ($timeFilter == 1) {
-               $include = true;
-            } else {
-               $timeD = $nowTime - $fTime;
-               if ($timeFilter == $timeFilterMax) {
-                  $include = ($timeD >= 86400 * ($timeFilter - 2));
-               } else {
-                  $include = ($timeD >= (86400 * ($timeFilter - 2))) && ($timeD < (($timeFilter - 1) * 86400));
-               }
-            }
-            if($include) {
-               $fType = getFileType($file);
-               if(($showTypes == '1') || ($showTypes == '2' && ($fType == 'i' || $fType == 't')) || ($showTypes == '3' && ($fType == 'v'))) {
-                  $thumbnails[$file] = $fType . $fTime;
-               }
-            }
-         }
-      }
-	  if ($sortOrder == 1) {
-		  asort($thumbnails);
-	  } else {
-		  arsort($thumbnails);
-	  }
-	  $thumbnails = array_keys($thumbnails);
-      return $thumbnails;   
-   }
-   
-function diskUsage() {
-      //Get disk data
-      echo '<div style="margin-left:5px;position:relative;width:300px;border:1px solid #ccc;margin-bottom: 1em;">';
-	  if (file_exists("diskUsage.txt")) {
-		$data = file_get_contents("diskUsage.txt");
-		$lines =  explode("\n", $data);
-	  } else {
-		  $lines = array("local:local");
-	  }
-	  $br = "";
-	  $px = 0;
-	  foreach($lines as $line) {
-	    $fields = explode(':', $line);
-		if(strlen($line) > 3 && count($fields) > 1) {
-		  if($fields[1] == 'local') $fields[1] = BASE_DIR . '/' . MEDIA_PATH;
-	      $totalSize = round(disk_total_space($fields[1]) / 1048576); //MB
-	      $currentAvailable = round(disk_free_space($fields[1]) / 1048576); //MB
-	      $percentUsed = round(($totalSize - $currentAvailable)/$totalSize * 100, 1);
-	      if ($percentUsed > 98)
-		    $colour = 'Red';
-	      else if ($percentUsed > 90)
-		    $colour = 'Orange';
-	      else
-		    $colour = 'LightGreen';
-	      echo $br . "<span>" . $fields[0] . ": $percentUsed%  Total: $totalSize MB</span>";
-	      echo "<div style='z-index:-1;position:absolute;top:" . $px . "px;width:$percentUsed%;background-color:$colour;'>&nbsp;</div>";
-		  $br = '<br>';
-		  $px = $px + 20;
+	function postedList() {
+		$list = array();
+		if (!empty($_POST['check_list']) && is_array($_POST['check_list'])) {
+			foreach ($_POST['check_list'] as $f) {
+				if (checkMediaPath($f)) $list[] = $f;
+			}
 		}
-	  }
-      echo '</div>';
-   }
-   
-   function settingsControls() {
-      global $previewSize,$thumbSize,$sortOrder, $showTypes;
-      global $timeFilter, $timeFilterMax;
-      
-      echo TXT_PREVIEW . " <input type='number' name='previewSize' value='$previewSize' style='width: 4em;'>";
-      echo "&nbsp;&nbsp;" . TXT_THUMB . " <input type='number' name='thumbSize' value='$thumbSize' style='width: 4em;'>";
-      echo "&nbsp;<button class='btn btn-primary' type='submit' name='action' value='updateSizeOrder'>" . BTN_UPDATESIZEORDER . "</button>";
-      echo '&nbsp;Sort&nbsp;<select id="sortOrder" name="sortOrder" onchange="this.form.submit()">';
-      if ($sortOrder == 1) $selected = "selected"; else $selected = "";
-      echo "<option value='1' $selected>Ascending</option>";
-      if ($sortOrder == 2) $selected = "selected"; else $selected = "";
-      echo "<option value='2'  $selected>Descending</option>";
-      echo '</select>';
-      echo '&nbsp;Types&nbsp;<select id="showTypes" name="showTypes" onchange="this.form.submit()">';
-      if ($showTypes == 1) $selected = "selected"; else $selected = "";
-      echo "<option value='1' $selected>Images &amp Videos</option>";
-      if ($showTypes == 2) $selected = "selected"; else $selected = "";
-      echo "<option value='2'  $selected>Images only</option>";
-      if ($showTypes == 3) $selected = "selected"; else $selected = "";
-      echo "<option value='3'  $selected>Videos only</option>";
-      echo '</select>';
-      echo '&nbsp;Filter&nbsp;<select id="timeFilter" name="timeFilter" onchange="this.form.submit()">';
-      if ($timeFilter == 1) $selected = "selected"; else $selected = "";
-      echo "<option value='1' $selected>All</option>";
-      for($tf = 2; $tf < $timeFilterMax;$tf++) {
-         if ($timeFilter == $tf) $selected = "selected"; else $selected = "";
-         $tfStr = ($tf-2) * 24 . '-' . ($tf-1) * 24 . ' hours old';
-         echo "<option value='$tf'  $selected>$tfStr</option>";
-      }
-      if ($timeFilter >= $timeFilterMax) $selected = "selected"; else $selected = "";
-      $tfStr = ($timeFilterMax-2) * 24 . '+ hours old';
-      echo "<option value='$timeFilterMax'  $selected>$tfStr</option>";
-      echo '</select>';
-	  echo '<br>';
-   }
-   $f = fopen(BASE_DIR . '/' . CONVERT_CMD, 'r');
-   $convertCmd = trim(fgets($f));
-   fclose($f);
-   $thumbnails = getThumbnails();
+		return $list;
+	}
+
+	function redirectWith($done, $n = 0) {
+		$q = array('done' => $done);
+		if ($n) $q['n'] = $n;
+		header('Location: preview.php?' . http_build_query($q), true, 303);
+		exit;
+	}
+
+	// streams a zip archive (uncompressed) of the given thumbnails' media files
+	function sendZip($thumbs) {
+		$files = array();
+		foreach ($thumbs as $thumb) {
+			$t = getFileType($thumb);
+			if ($t == 't') {
+				$files = array_merge($files, findLapseFiles($thumb));
+			} else if ($t == 'v' || $t == 'i') {
+				$base = BASE_DIR . '/' . MEDIA_PATH . '/' . dataFilename($thumb);
+				if (file_exists($base)) $files[] = $base;
+				if ($t == 'v' && file_exists("$base.dat")) $files[] = "$base.dat";
+			}
+		}
+		if (!count($files)) redirectWith('nosel');
+		$cmd = 'zip -0 -q -j -';
+		foreach ($files as $f) $cmd .= ' ' . escapeshellarg($f);
+		writeLog('Generating ZIP of ' . count($files) . ' files');
+		header('Content-Type: application/zip');
+		header('Content-Disposition: attachment; filename="cam_' . date('Ymd_His') . '.zip"');
+		$zip = popen($cmd, 'r');
+		fpassthru($zip);
+		pclose($zip);
+		exit;
+	}
+
+	function sendFile($thumb) {
+		if (getFileType($thumb) == 't') sendZip(array($thumb));
+		$file = BASE_DIR . '/' . MEDIA_PATH . '/' . dataFilename($thumb);
+		if (!is_file($file)) redirectWith('missing');
+		header('Content-Type: ' . (strcasecmp(fileext($file), 'jpg') == 0 ? 'image/jpeg' : 'video/mp4'));
+		header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+		header('Content-Length: ' . filesize_n($file));
+		readfile($file);
+		exit;
+	}
+
+	// builds an mp4 from a timelapse batch in the background
+	function startVideoConvert($thumb) {
+		$ft = getFileType($thumb);
+		$fi = getFileIndex($thumb);
+		if ($ft != 't' || !is_numeric($fi)) return false;
+		$tFiles = findLapseFiles($thumb);
+		if (!count($tFiles)) return false;
+		$tmp = BASE_DIR . '/' . MEDIA_PATH . '/' . $ft . $fi;
+		if (!file_exists($tmp)) mkdir($tmp, 0777, true);
+		foreach ($tFiles as $i => $tFile) {
+			@symlink($tFile, $tmp . '/' . sprintf('i_%05d', $i) . '.jpg');
+		}
+		$vFile = substr(dataFilename($thumb), 0, -3) . 'mp4';
+		$cmd = trim((string)@file_get_contents(BASE_DIR . '/' . CONVERT_CMD));
+		if ($cmd === '') $cmd = '/usr/bin/ffmpeg -f image2 -i i_%05d.jpg';
+		$cmd = str_replace('i_%05d', escapeshellarg($tmp) . '/i_%05d', $cmd);
+		$cmd = '(' . $cmd . ' ' . escapeshellarg(BASE_DIR . '/' . MEDIA_PATH . "/$vFile") . ' ; rm -rf ' . escapeshellarg($tmp) . ';) >/dev/null 2>&1 &';
+		writeLog("start lapse convert:$cmd");
+		system($cmd);
+		copy(BASE_DIR . '/' . MEDIA_PATH . "/$thumb", BASE_DIR . '/' . MEDIA_PATH . '/' . str_replace('/', SUBDIR_CHAR, $vFile) . '.v' . $fi . THUMBNAIL_EXT);
+		return true;
+	}
+
+	// deletes files and folders recursively, empty subfolders get removed, top dir is kept
+	function maintainFolders($path, $deleteMainFiles, $deleteSubFiles, $root = true) {
+		$empty = true;
+		foreach (glob("$path/*") as $file) {
+			if (is_dir($file)) {
+				if (!maintainFolders($file, $deleteMainFiles, $deleteSubFiles, false)) $empty = false;
+			} else {
+				if (($deleteSubFiles && !$root) || ($deleteMainFiles && $root)) {
+					if (is_writeable($file)) @unlink($file); else $empty = false;
+				} else {
+					$empty = false;
+				}
+			}
+		}
+		return $empty && !$root && @rmdir($path);
+	}
+
+	// ---------- actions ----------
+	if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+		rejectCrossSiteRequest();
+		$mediaDir = BASE_DIR . '/' . MEDIA_PATH;
+		if (isset($_POST['download1'])) {
+			if (checkMediaPath($_POST['download1'])) sendFile($_POST['download1']);
+			redirectWith('missing');
+		}
+		$action = isset($_POST['action']) ? $_POST['action'] : '';
+		if ($action == 'zipSel') sendZip(postedList());
+		if (!$canEdit) denyRequest(403, 'Forbidden: insufficient user level');
+		if (isset($_POST['delete1'])) {
+			if (!checkMediaPath($_POST['delete1'])) redirectWith('missing');
+			deleteFile($_POST['delete1']);
+			maintainFolders($mediaDir, false, false);
+			redirectWith('deleted', 1);
+		}
+		if (isset($_POST['convert'])) {
+			if (checkMediaPath($_POST['convert']) && startVideoConvert($_POST['convert'])) redirectWith('converting');
+			redirectWith('missing');
+		}
+		switch ($action) {
+			case 'deleteAll':
+				maintainFolders($mediaDir, true, true);
+				redirectWith('deletedall');
+			case 'deleteSel':
+				$list = postedList();
+				foreach ($list as $f) deleteFile($f);
+				maintainFolders($mediaDir, false, false);
+				redirectWith('deleted', count($list));
+			case 'lockSel':
+			case 'unlockSel':
+				$list = postedList();
+				foreach ($list as $f) lockFile($f, $action == 'lockSel' ? 1 : 0);
+				redirectWith($action == 'lockSel' ? 'locked' : 'unlocked', count($list));
+		}
+		redirectWith('none');
+	}
+
+	// ---------- data for the page ----------
+	function formatBytes($bytes) {
+		$units = array('B', 'KB', 'MB', 'GB', 'TB');
+		$i = 0;
+		while ($bytes >= 1024 && $i < count($units) - 1) { $bytes /= 1024; $i++; }
+		return ($i == 0 ? $bytes : number_format($bytes, $bytes < 10 ? 1 : 0, uiLang() == 'de' ? ',' : '.', '')) . ' ' . $units[$i];
+	}
+
+	function formatDuration($s) {
+		return $s >= 60 ? sprintf('%d:%02d', floor($s / 60), $s % 60) : $s . ' s';
+	}
+
+	function mediaItems($showType, $ageFilter, $sortOrder) {
+		$items = array();
+		$now = time();
+		$dir = BASE_DIR . '/' . MEDIA_PATH;
+		foreach (scandir($dir) as $file) {
+			if ($file == '.' || $file == '..' || !isThumbnail($file)) continue;
+			$thumbTime = filemtime("$dir/$file");
+			if ($ageFilter > 1) {
+				$age = $now - $thumbTime;
+				$from = 86400 * ($ageFilter - 2);
+				if ($age < $from || ($ageFilter < AGE_FILTER_MAX && $age >= $from + 86400)) continue;
+			}
+			$type = getFileType($file);
+			if ($showType == 'images' && $type != 'i' && $type != 't') continue;
+			if ($showType == 'videos' && $type != 'v') continue;
+			$data = dataFilename($file);
+			$item = array('thumb' => $file, 'url' => MEDIA_PATH . '/' . $data, 'type' => $type, 'index' => getFileIndex($file),
+				'size' => 0, 'time' => $thumbTime, 'duration' => 0, 'frames' => 0, 'locked' => !is_writeable("$dir/$file"));
+			if ($data !== '' && file_exists("$dir/$data")) {
+				$item['size'] = filesize_n("$dir/$data");
+				$item['time'] = filemtime("$dir/$data");
+				if ($type == 'v') $item['duration'] = max(0, $item['time'] - $thumbTime);
+			}
+			if ($type == 't') {
+				$lapse = findLapseFiles($file);
+				$item['frames'] = count($lapse);
+				foreach ($lapse as $l) $item['size'] += filesize_n($l);
+			}
+			$items[] = $item;
+		}
+		usort($items, function ($a, $b) use ($sortOrder) {
+			return $sortOrder == 'oldest' ? $a['time'] - $b['time'] : $b['time'] - $a['time'];
+		});
+		return $items;
+	}
+
+	function diskUsage() {
+		$lines = file_exists(BASE_DIR . '/diskUsage.txt') ? explode("\n", file_get_contents(BASE_DIR . '/diskUsage.txt')) : array('local:local');
+		$disks = array();
+		foreach ($lines as $line) {
+			$fields = explode(':', trim($line), 2);
+			if (strlen(trim($line)) < 3 || count($fields) < 2) continue;
+			$path = $fields[1] == 'local' ? BASE_DIR . '/' . MEDIA_PATH : $fields[1];
+			$total = @disk_total_space($path);
+			$free = @disk_free_space($path);
+			if (!$total) continue;
+			$disks[] = array('name' => $fields[0], 'total' => $total, 'free' => $free, 'pct' => round(($total - $free) / $total * 100, 1));
+		}
+		return $disks;
+	}
+
+	$items = mediaItems($showType, $ageFilter, $sortOrder);
+	$disks = diskUsage();
+	$typeIcons = array('i' => 'image', 'v' => 'video', 't' => 'clock');
+	$typeNames = array('i' => t('media.type_i'), 'v' => t('media.type_v'), 't' => t('media.type_t'));
+
+	$flash = '';
+	if (isset($_GET['done'])) {
+		$n = isset($_GET['n']) ? (int)$_GET['n'] : 0;
+		switch ($_GET['done']) {
+			case 'deleted': $flash = flashMessage(t('media.deleted', array('n' => $n))); break;
+			case 'deletedall': $flash = flashMessage(t('media.deleted_all')); break;
+			case 'locked': $flash = flashMessage(t('media.locked_msg')); break;
+			case 'unlocked': $flash = flashMessage(t('media.unlocked_msg')); break;
+			case 'converting': $flash = flashMessage(t('media.convert_started'), 'info'); break;
+			case 'nosel': $flash = flashMessage(t('media.no_selection'), 'error'); break;
+		}
+	}
+
+	pageHeader(t('media.title'), 'media');
+	echo $flash;
 ?>
-<!DOCTYPE html>
-<html>
-   <head>
-      <meta name="viewport" content="width=550, initial-scale=1">
-      <title><?php echo CAM_STRING; ?> Download</title>
-      <link rel="stylesheet" href="css/style_minified.css" />
-      <link rel="stylesheet" href="css/preview.css" />
-      <link rel="stylesheet" href="<?php echo getStyle(); ?>" />
-      <script src="js/style_minified.js"></script>
-      <script src="js/script.js"></script>
-      <script src="js/preview.js"></script>
-      <script>
-         var thumbnails = <?php echo json_encode($thumbnails) ?>;
-         var linksBase = 'preview.php?preview=';
-         var mediaBase = "<?php echo MEDIA_PATH . '/' ?>";
-         var previewWidth = <?php echo $previewSize ?>;
-      </script>
+<div class="page-head">
+	<h1><?php et('media.title'); ?> <span class="muted small" style="font-weight:500"><?php et('media.items', array('n' => count($items))); ?></span></h1>
+<?php foreach ($disks as $d) {
+	$cls = $d['pct'] > 98 ? ' crit' : ($d['pct'] > 90 ? ' warn' : ''); ?>
+	<div class="storage-row" style="min-width:min(320px,100%)" title="<?php et('media.storage'); ?>">
+		<?php echo icon('hard-drive'); ?>
+		<div class="meter<?php echo $cls; ?>"><span style="width:<?php echo h($d['pct']); ?>%"></span></div>
+		<span class="muted"><?php echo h($d['name'] . ' · ' . t('media.storage_free', array('free' => formatBytes($d['free']), 'total' => formatBytes($d['total'])))); ?></span>
+	</div>
+<?php } ?>
+</div>
 
-   </head>
-   <body>
-      <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
-         <div class="container">
-            <div class="navbar-header">
-               <a class="navbar-brand" href="<?php echo ROOT_PHP; ?>"><span class="glyphicon glyphicon-chevron-left"></span>Back - <?php echo CAM_STRING; ?></a>
-            </div>
-         </div>
-      </div>
-    
-      <div class="container-fluid">
-      <form action="preview.php" method="POST">
-         <div id='preview' style="display: none; min-height: <?php echo $previewSize ?>px">
-            <h1 <?php echo pvDisplayStyle(''); ?>>
-               <?php echo TXT_PREVIEW ?>: <span id='media-title'></span>
-               <input type='button' value='&larr;' class='btn btn-primary' name='prev'>
-               <input type='button' value='&rarr;' class='btn btn-primary' name='next'>
+<form id="mediaForm" method="post" action="preview.php"></form>
 
-               <button class='btn btn-primary' type='submit' name='download1'><?php echo BTN_DOWNLOAD; ?></button>
-               <button class='btn btn-danger' type='submit' name='delete1' onclick='return confirm("<?php echo BTN_DELETE_CONFIRM; ?>");'><?php echo BTN_DELETE; ?></button>
-               
-               <button class='btn btn-primary' type='submit' name='convert'><?php echo BTN_CONVERT ?></button>
-               <br>
-            </h1>
+<div class="card toolbar">
+	<div class="segmented" role="group" aria-label="<?php et('media.filter'); ?>">
+<?php foreach (array('all' => 'media.filter_all', 'images' => 'media.filter_images', 'videos' => 'media.filter_videos') as $k => $label) { ?>
+		<a href="?type=<?php echo $k; ?>" class="<?php echo $showType == $k ? 'active' : ''; ?>"<?php echo $showType == $k ? ' aria-current="true"' : ''; ?>><?php et($label); ?></a>
+<?php } ?>
+	</div>
+	<form method="get" action="preview.php" class="row" id="viewForm">
+		<label class="inline"><?php et('media.age'); ?>
+			<select class="select" name="age" onchange="this.form.submit()">
+				<option value="1"><?php et('media.age_all'); ?></option>
+<?php for ($a = 2; $a < AGE_FILTER_MAX; $a++) { ?>
+				<option value="<?php echo $a; ?>"<?php echo $ageFilter == $a ? ' selected' : ''; ?>><?php et('media.age_range', array('from' => ($a - 2) * 24, 'to' => ($a - 1) * 24)); ?></option>
+<?php } ?>
+				<option value="<?php echo AGE_FILTER_MAX; ?>"<?php echo $ageFilter == AGE_FILTER_MAX ? ' selected' : ''; ?>><?php et('media.age_older', array('h' => (AGE_FILTER_MAX - 2) * 24)); ?></option>
+			</select>
+		</label>
+		<label class="inline"><?php et('media.sort'); ?>
+			<select class="select" name="sort" onchange="this.form.submit()">
+				<option value="newest"<?php echo $sortOrder == 'newest' ? ' selected' : ''; ?>><?php et('media.sort_newest'); ?></option>
+				<option value="oldest"<?php echo $sortOrder == 'oldest' ? ' selected' : ''; ?>><?php et('media.sort_oldest'); ?></option>
+			</select>
+		</label>
+		<noscript><button class="btn btn-sm" type="submit"><?php et('btn.apply'); ?></button></noscript>
+	</form>
+	<span class="spacer"></span>
+	<label class="inline thumbsize"><?php echo icon('grid'); ?><span class="sr-only"><?php et('media.thumbsize'); ?></span>
+		<input type="range" id="thumbSize" min="120" max="420" step="10" value="220" aria-label="<?php et('media.thumbsize'); ?>">
+	</label>
+<?php if (count($items)) { ?>
+	<button type="button" class="btn btn-ghost btn-sm" id="selectAll"><?php echo icon('check-square'); ?><span><?php echo h(t('js.media.select_all')); ?></span></button>
+<?php if ($canEdit) { ?>
+	<button type="submit" form="mediaForm" name="action" value="deleteAll" class="btn btn-soft-danger btn-sm" data-confirm="<?php echo h(t('js.media.confirm_delete_all')); ?>" data-danger data-ok="<?php et('media.delete_all'); ?>"><?php echo icon('trash'); ?><span><?php et('media.delete_all'); ?></span></button>
+<?php } ?>
+<?php } ?>
+</div>
 
-            <div id='media'></div>
-         </div>
+<?php if (!count($items)) { ?>
+<div class="card empty">
+	<?php echo icon('image'); ?>
+	<strong><?php et('media.empty'); ?></strong>
+	<span><?php et('media.empty_hint'); ?></span>
+</div>
+<?php } else {
+	$lastDay = '';
+	$lightbox = array();
+	foreach ($items as $i => $item) {
+		$day = date('Y-m-d', $item['time']);
+		if ($day != $lastDay) {
+			if ($lastDay != '') echo "</div>\n";
+			echo '<div class="media-group"><h2 data-date="' . h($day) . '">' . h($day) . '</h2></div>' . "\n";
+			echo '<div class="media-grid">' . "\n";
+			$lastDay = $day;
+		}
+		$busy = $item['size'] == 0;
+		$meta = $typeNames[$item['type']] ?? '';
+		if ($item['type'] == 'v' && $item['duration']) $meta = formatDuration($item['duration']);
+		if ($item['type'] == 't') $meta = t('media.frames', array('n' => $item['frames']));
+		$lightbox[] = array('thumb' => $item['thumb'], 'url' => $item['url'], 'type' => $item['type'], 'index' => $item['index'],
+			'when' => date('Y-m-d H:i:s', $item['time']), 'size' => formatBytes($item['size']), 'meta' => $meta, 'busy' => $busy);
+?>
+	<article class="media-card" data-index="<?php echo $i; ?>">
+		<label class="media-check"><input type="checkbox" name="check_list[]" value="<?php echo h($item['thumb']); ?>" form="mediaForm" aria-label="<?php echo h($item['index']); ?>"></label>
+		<button type="button" class="media-thumb" data-open="<?php echo $i; ?>" title="<?php echo h(basename($item['url'])); ?>">
+			<img loading="lazy" decoding="async" src="<?php echo h(MEDIA_PATH . '/' . $item['thumb']); ?>" alt="">
+			<span class="media-type"><?php echo icon($typeIcons[$item['type']] ?? 'image'); ?><?php echo h($meta); ?></span>
+<?php if ($item['locked']) { ?>
+			<span class="media-lock" title="<?php et('media.lock'); ?>"><?php echo icon('lock'); ?></span>
+<?php } ?>
+<?php if ($busy) { ?>
+			<span class="media-busy">…</span>
+<?php } ?>
+		</button>
+		<div class="media-meta">
+			<span class="name">#<?php echo h($item['index']); ?></span>
+			<span class="time"><?php echo h(date('H:i:s', $item['time'])); ?></span>
+			<span class="size"><?php echo $busy ? '–' : h(formatBytes($item['size'])); ?></span>
+		</div>
+	</article>
+<?php
+	}
+	echo "</div>\n";
+} ?>
 
-         <script>
-            var thumbnail = getParameterByName('preview');
-            if (thumbnail) {
-               load_preview(thumbnail);
-            }
-         </script>
+<div class="bulkbar" id="bulkbar" hidden>
+	<span class="count" id="selCount"></span>
+	<button type="button" class="btn btn-ghost btn-sm" id="selectNone" aria-label="<?php echo h(t('js.media.select_none')); ?>" title="<?php echo h(t('js.media.select_none')); ?>"><?php echo icon('x'); ?></button>
+	<button type="submit" form="mediaForm" name="action" value="zipSel" class="btn btn-soft btn-sm" title="<?php et('media.zip'); ?>"><?php echo icon('archive'); ?><span><?php et('media.zip'); ?></span></button>
+<?php if ($canEdit) { ?>
+	<button type="submit" form="mediaForm" name="action" value="lockSel" class="btn btn-ghost btn-sm" title="<?php et('media.lock'); ?>"><?php echo icon('lock'); ?><span><?php et('media.lock'); ?></span></button>
+	<button type="submit" form="mediaForm" name="action" value="unlockSel" class="btn btn-ghost btn-sm" title="<?php et('media.unlock'); ?>"><?php echo icon('unlock'); ?><span><?php et('media.unlock'); ?></span></button>
+	<button type="submit" form="mediaForm" name="action" value="deleteSel" class="btn btn-danger btn-sm" id="deleteSel" data-danger data-ok="<?php et('media.delete'); ?>" title="<?php et('media.delete'); ?>"><?php echo icon('trash'); ?><span><?php et('media.delete'); ?></span></button>
+<?php } ?>
+</div>
 
-         <h1 <?php echo pvDisplayStyle(''); ?>><?php echo TXT_FILES; ?>
-         <button class='btn btn-primary' type='submit' name='action' value='selectNone'><?php echo BTN_SELECTNONE; ?></button>
-         <button class='btn btn-primary' type='submit' name='action' value='selectAll'><?php echo BTN_SELECTALL; ?></button>
-         <button class='btn btn-primary' type='submit' name='action' value='zipSel'><?php echo BTN_GETZIP; ?></button>
-         <button class='btn btn-warning' type='submit' name='action' value='deleteSel' onclick="return confirm('<?php echo BTN_DELETESEL_CONFIRM; ?>')"><?php echo BTN_DELETESEL; ?></button>
-         <button class='btn btn-danger' type='submit' name='action' value='deleteAll' onclick="return confirm('<?php echo BTN_DELETEALL_CONFIRM; ?>')"><?php echo BTN_DELETEALL; ?></button>
-         <button class='btn btn-primary' type='submit' name='action' value='lockSel'><?php echo BTN_LOCKSEL; ?></button>
-         <button class='btn btn-primary' type='submit' name='action' value='unlockSel'><?php echo BTN_UNLOCKSEL; ?></button>
-         </h1>
-         <?php
-         diskUsage();
-         if(CONTROLS_POS == 'top') settingsControls();
-         if ($debugString !="") echo "$debugString<br>";
-         if(count($thumbnails) == 0) echo "<p>No videos/images saved</p>";
-         else {
-            foreach($thumbnails as $file) {
-              drawFile($file, $thumbSize, $dSelect);
-            }
-         }
-         if(CONTROLS_POS == 'bottom') {echo "<br>";settingsControls();}
-      ?>
-      </form>
-      
-      </div>
-   </body>
-</html>
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-labelledby="lbTitle">
+	<div class="lightbox-head">
+		<div class="title" id="lbTitle"></div>
+		<button type="submit" form="mediaForm" name="download1" class="btn btn-ghost btn-sm" id="lbDownload"><?php echo icon('download'); ?><span><?php et('media.download'); ?></span></button>
+		<a class="btn btn-ghost btn-sm" id="lbOpen" target="_blank" rel="noopener"><?php echo icon('external'); ?><span><?php et('media.open'); ?></span></a>
+<?php if ($canEdit) { ?>
+		<button type="submit" form="mediaForm" name="convert" class="btn btn-ghost btn-sm" id="lbConvert"><?php echo icon('film'); ?><span><?php et('media.convert'); ?></span></button>
+		<button type="submit" form="mediaForm" name="delete1" class="btn btn-ghost btn-sm" id="lbDelete" data-confirm="<?php echo h(t('js.media.confirm_delete')); ?>" data-danger data-ok="<?php et('media.delete'); ?>"><?php echo icon('trash'); ?><span><?php et('media.delete'); ?></span></button>
+<?php } ?>
+		<button type="button" class="icon-btn" id="lbClose" aria-label="<?php echo h(t('js.media.close')); ?>"><?php echo icon('x'); ?></button>
+	</div>
+	<div class="lightbox-body">
+		<div id="lbMedia"></div>
+		<button type="button" class="icon-btn lightbox-nav prev" id="lbPrev" aria-label="<?php echo h(t('js.media.prev')); ?>"><?php echo icon('chevron-left'); ?></button>
+		<button type="button" class="icon-btn lightbox-nav next" id="lbNext" aria-label="<?php echo h(t('js.media.next')); ?>"><?php echo icon('chevron-right'); ?></button>
+	</div>
+</div>
+<?php
+	pageFooter(array('js/media.js'), array('media' => isset($lightbox) ? $lightbox : array()));
+?>

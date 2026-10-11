@@ -1,35 +1,18 @@
 <?php
+   // Scheduler: runs as a background CLI process (php schedule.php) and provides the schedule settings page.
+   // Note: install.sh used to rewrite paths in this file, keep it free of absolute install paths.
    define('BASE_DIR', dirname(__FILE__));
    require_once(BASE_DIR.'/config.php');
-   //Text labels here 
-   define('BTN_START', 'Start');
-   define('BTN_STOP', 'Stop');
-   define('BTN_SAVE', 'Save Settings');
-   define('BTN_BACKUP', 'Backup');
-   define('BTN_RESTORE', 'Restore');
-   define('BTN_SHOWLOG', 'Show Log');
-   define('BTN_DOWNLOADLOG', 'Download Log');
-   define('BTN_CLEARLOG', 'Clear Log');
-   define('LBL_PERIODS', 'AllDay;Night;Dawn;Day;Dusk');
-   define('LBL_COLUMNS', 'Period;Days Su-Sa;Motion Start;Motion Stop;Period Start');
-   define('LBL_PARAMETERS', 'Parameter;Value');
-   define('LBL_DAYMODES', 'Sun based;All Day;Fixed Times');
-   define('LBL_PURGESPACEMODES', 'Off;Min Space %;Max Usage %;Min Space GB;Max Usage GB');
-   define('LBL_DAWN', 'Dawn');
-   define('LBL_DAY', 'Day');
-   define('LBL_DUSK', 'Dusk');
 
    define('SCHEDULE_CONFIG', 'schedule.json');
    define('SCHEDULE_CONFIGBACKUP', 'scheduleBackup.json');
- 
+
    define('SCHEDULE_START', '1');
    define('SCHEDULE_STOP', '0');
    define('SCHEDULE_RESET', '9');
-   
+
    define('SCHEDULE_TIMES_MAX', '12');
-   
-   define('SCHEDULE_ZENITH', '90.8');
- 
+
    define('SCHEDULE_FIFOIN', 'Fifo_In');
    define('SCHEDULE_FIFOOUT', 'Fifo_Out');
    define('SCHEDULE_CMDPOLL', 'Cmd_Poll');
@@ -62,70 +45,17 @@
    define('SCHEDULE_MODES', 'Modes');
    define('SCHEDULE_TIMES', 'Times');
    define('SCHEDULE_DAYS', 'Days');
-   
-   $debugString = "";
-   $schedulePars = array();
+
    $schedulePars = loadPars(BASE_DIR . '/' . SCHEDULE_CONFIG);
-   
    $cliCall = isCli();
-   $showLog = false;
-   $schedulePID = getSchedulePID();
-   if (!$cliCall && isset($_POST['action'])) {
-   //Process any POST data
-      switch($_POST['action']) {
-         case 'start':
-            startSchedule();
-            $schedulePID = getSchedulePID();
-            break;
-         case 'stop':
-            stopSchedule($schedulePID);
-            $schedulePID = getSchedulePID();
-            break;
-         case 'save':
-            writeLog('Saved schedule settings');
-            $fp = fopen(BASE_DIR . '/' . SCHEDULE_CONFIG, 'w');
-            $saveData = $_POST;
-            unset($saveData['action']);
-            fwrite($fp, json_encode($saveData));
-            fclose($fp);
-            $schedulePars = loadPars(BASE_DIR . '/' . SCHEDULE_CONFIG);
-            sendReset();
-            break;
-         case 'backup':
-            writeLog('Backed up schedule settings');
-            $fp = fopen(BASE_DIR . '/' . SCHEDULE_CONFIGBACKUP, 'w');
-            fwrite($fp, json_encode($schedulePars));
-            fclose($fp);
-            break;
-         case 'restore':
-            writeLog('Restored up schedule settings');
-            $schedulePars = loadPars(BASE_DIR . '/' . SCHEDULE_CONFIGBACKUP);
-            break;
-         case 'showlog':
-            $showLog = true;
-            break;
-         case 'downloadlog':
-            if (file_exists(getLogFile())) {
-               header("Content-Type: text/plain");
-               header("Content-Disposition: attachment; filename=\"" . date('Ymd-His-') . LOGFILE_SCHEDULE . "\"");
-               readfile(getLogFile());
-               return;
-            }
-         case 'clearlog':
-            if (file_exists(getLogFile())) {
-               unlink(getLogFile());
-            }
-            break;
-      }
-   }
-   
+
    function isCli() {
        if( defined('STDIN') ) {
            return true;
        }
-       if( empty($_SERVER['REMOTE_ADDR']) and !isset($_SERVER['HTTP_USER_AGENT']) and count($_SERVER['argv']) > 0) {
+       if( empty($_SERVER['REMOTE_ADDR']) and !isset($_SERVER['HTTP_USER_AGENT']) and isset($_SERVER['argv']) and count($_SERVER['argv']) > 0) {
            return true;
-       } 
+       }
        return false;
    }
 
@@ -135,50 +65,73 @@
       $pidId = 0;
       foreach ($pids as $pid) {
          if (strpos($pid, 'schedule.php') !== false) {
-            $fields = preg_split('#\s+#', $pid, null, PREG_SPLIT_NO_EMPTY);
-            if (is_numeric($fields[1])) {
+            $fields = preg_split('#\s+#', $pid, -1, PREG_SPLIT_NO_EMPTY);
+            if (isset($fields[1]) && is_numeric($fields[1])) {
                $pidId = $fields[1];
             }
          }
       }
       return $pidId;
    }
-   
+
    function startSchedule() {
-      $ret = exec("php schedule.php >/dev/null &");
+      exec('cd ' . escapeshellarg(BASE_DIR) . ' && php schedule.php >/dev/null 2>&1 &');
    }
 
    function stopSchedule($pid) {
-      exec("kill $pid");
+      if ((int)$pid > 0) exec('kill ' . (int)$pid);
    }
+
    function loadPars($config) {
       $pars = initPars();
+      $input = null;
       if (file_exists($config)) {
-         try {
-            //get pars from config file and update only values which exist in initPars
-            $input = json_decode(file_get_contents($config), true);
-            foreach($pars as $key => $value) {
-               if (array_key_exists($key, $input)) {
-                  $pars[$key] = $input[$key];
-               }
+         $input = json_decode(file_get_contents($config), true);
+      }
+      if (is_array($input)) {
+         //get pars from config file and update only values which exist in initPars
+         foreach($pars as $key => $value) {
+            if (array_key_exists($key, $input)) {
+               $pars[$key] = $input[$key];
             }
-            //Backwards compatibility fixes go here
-            if (array_key_exists(SCHEDULE_ALLDAY,$input)) $pars[SCHEDULE_DAYMODE] = SCHEDULE_MODE_ALLDAY;
-            if (array_key_exists('Longtitude',$input)) $pars[SCHEDULE_LONGITUDE] = $input['Longtitude'];
-            //Duplicate old Day to First AllDay
-            if (count($pars[SCHEDULE_COMMANDSON]) < 11) {
-               array_unshift($pars[SCHEDULE_COMMANDSON], $pars[SCHEDULE_COMMANDSON][2]);
-               array_unshift($pars[SCHEDULE_COMMANDSOFF], $pars[SCHEDULE_COMMANDSOFF][2]);
-               array_unshift($pars[SCHEDULE_MODES], $pars[SCHEDULE_MODES][2]);
-            }
-         } catch (Exception $e) {
+         }
+         //Backwards compatibility fixes go here
+         if (array_key_exists(SCHEDULE_ALLDAY,$input)) $pars[SCHEDULE_DAYMODE] = SCHEDULE_MODE_ALLDAY;
+         if (array_key_exists('Longtitude',$input)) $pars[SCHEDULE_LONGITUDE] = $input['Longtitude'];
+         foreach (array(SCHEDULE_COMMANDSON, SCHEDULE_COMMANDSOFF, SCHEDULE_MODES, SCHEDULE_TIMES) as $key) {
+            if (!is_array($pars[$key])) $pars[$key] = array();
+            $pars[$key] = array_values($pars[$key]);
+         }
+         //Duplicate old Day to First AllDay
+         if (count($pars[SCHEDULE_COMMANDSON]) < 11) {
+            array_unshift($pars[SCHEDULE_COMMANDSON], isset($pars[SCHEDULE_COMMANDSON][2]) ? $pars[SCHEDULE_COMMANDSON][2] : '');
+            array_unshift($pars[SCHEDULE_COMMANDSOFF], isset($pars[SCHEDULE_COMMANDSOFF][2]) ? $pars[SCHEDULE_COMMANDSOFF][2] : '');
+            array_unshift($pars[SCHEDULE_MODES], isset($pars[SCHEDULE_MODES][2]) ? $pars[SCHEDULE_MODES][2] : '');
          }
       }
-	  // Add in any extra SCHEDULE_TIMES and SCHEDULE_DAYS settings up to maximum count
-	  for($i = count($pars[SCHEDULE_TIMES]); $i < SCHEDULE_TIMES_MAX; $i++) {
-		  $pars[SCHEDULE_TIMES][$i] = sprintf("%02d", $i+9).":00";
-		  $pars[SCHEDULE_DAYS][$i] = array(0,1,2,3,4,5,6);
-	  }
+      // the FIFOs are fixed and never taken from the saved file
+      $init = initPars();
+      $pars[SCHEDULE_FIFOIN] = $init[SCHEDULE_FIFOIN];
+      $pars[SCHEDULE_FIFOOUT] = $init[SCHEDULE_FIFOOUT];
+      // Add in any extra SCHEDULE_TIMES settings up to maximum count
+      for($i = count($pars[SCHEDULE_TIMES]); $i < SCHEDULE_TIMES_MAX; $i++) {
+         $pars[SCHEDULE_TIMES][$i] = sprintf("%02d", $i+9).":00";
+      }
+      // every period row (5 fixed rows + times) needs a days list; rows missing in a saved form had no day ticked
+      $hadDays = is_array($input) && isset($input[SCHEDULE_DAYS]) && is_array($input[SCHEDULE_DAYS]);
+      $days = $hadDays ? $input[SCHEDULE_DAYS] : array();
+      $pars[SCHEDULE_DAYS] = array();
+      for ($row = 0; $row < count($pars[SCHEDULE_TIMES]) + 5; $row++) {
+         if (isset($days[$row]) && is_array($days[$row])) {
+            $pars[SCHEDULE_DAYS][$row] = array_map('intval', array_values($days[$row]));
+         } else {
+            $pars[SCHEDULE_DAYS][$row] = $hadDays ? array() : array(0,1,2,3,4,5,6);
+         }
+      }
+      // commands for every row
+      foreach (array(SCHEDULE_COMMANDSON, SCHEDULE_COMMANDSOFF, SCHEDULE_MODES) as $key) {
+         for ($row = count($pars[$key]); $row < count($pars[SCHEDULE_TIMES]) + 5; $row++) $pars[$key][$row] = '';
+      }
       return $pars;
    }
 
@@ -214,303 +167,122 @@
       );
       return $pars;
    }
-   
-   //Support functions for HTML
-   function showScheduleSettings($pars) {
-      global $schedulePars;
-      $headings = explode(';', LBL_PARAMETERS);
-      echo '<table class="settingsTable">';
-      echo '<tr>';
-      foreach($headings as $heading) {
-         echo '<th style="text-align:center">' . $heading . '</th>';
-      }
-      foreach($headings as $heading) {
-         echo '<th style="text-align:center">' . $heading . '</th>';
-      }
-      echo '</tr>';
-      $column = 0;
-      foreach ($pars as $mKey => $mValue) {
-         if ($column == 0) echo '<tr>';
-		 if ($mKey == SCHEDULE_FIFOIN || $mKey == SCHEDULE_FIFOOUT) {
-			 $disabled = "disabled";
-		 } else {
-			 $disabled = "";
-		 }
-         if (!is_array($mValue)) {
-            switch ($mKey) {
-               case SCHEDULE_DAYMODE:
-                  $options = explode(';', LBL_DAYMODES);
-                  echo "<td>$mKey&nbsp;&nbsp;</td><td>Select Mode&nbsp;<select id='$mKey' name='$mKey'" .' onclick="schedule_rows();">';
-                  for($i = 0; $i < count($options); $i++) {
-                     if ($i == $mValue) $selected = ' selected'; else $selected ='';
-                     $option = $options[$i];
-                     echo "<option value='$i'$selected>$option</option>";
-                  }
-                  echo '</select></td>';
-                  break;
-               case SCHEDULE_PURGESPACEMODE:
-                  $options = explode(';', LBL_PURGESPACEMODES);
-                  echo "<td>$mKey&nbsp;&nbsp;</td><td>Select Mode&nbsp;<select id='$mKey' name='$mKey'>";
-                  for($i = 0; $i < count($options); $i++) {
-                     if ($i == $mValue) $selected = ' selected'; else $selected ='';
-                     $option = $options[$i];
-                     echo "<option value='$i'$selected>$option</option>";
-                  }
-                  echo '</select></td>';
-                  break;
-               default:
-                  echo "<td>$mKey&nbsp;&nbsp;</td><td><input type='text' autocomplete='off' size='30' name='$mKey' $disabled value='" . htmlspecialchars($mValue, ENT_QUOTES) . "'/></td>";
+
+   // only known keys from a posted form, FIFO paths can not be changed
+   function parsFromPost($post) {
+      $save = array();
+      foreach (initPars() as $key => $value) {
+         if ($key == SCHEDULE_FIFOIN || $key == SCHEDULE_FIFOOUT) continue;
+         if (!isset($post[$key])) continue;
+         $v = $post[$key];
+         if (is_array($value)) {
+            if (!is_array($v)) continue;
+            if ($key == SCHEDULE_DAYS) {
+               $days = array();
+               foreach ($v as $row => $list) {
+                  if (is_array($list)) $days[(int)$row] = array_values(array_unique(array_map('intval', array_filter($list, 'is_numeric'))));
+               }
+               $v = $days;
+            } else {
+               $v = array_map('strval', array_values($v));
             }
-            $column++;
-            if ($column == 2) {echo '</tr>';$column =0;}
-         }
-      }
-      if ($column == 0) echo '<tr>';
-      echo '</table><br>';
-      $d = dayPeriod();
-      $periods = explode(';', LBL_PERIODS);
-      if ($d < 5) $period = $periods[$d]; else $period = $d-4;
-      echo '<table class="settingsTable">';
-      echo '<tr style="text-align:center;"><td>Time Offset: ' . getTimeOffset() . '</td><td>Sunrise: ' . getSunrise(SUNFUNCS_RET_STRING) . '</td><td>Sunset: ' . getSunset(SUNFUNCS_RET_STRING) . '</td><td>Current: ' . getCurrentLocalTime(false) . "</td><td>Period: $period </td></tr></table>";
-      
-      $columns = explode(';', LBL_COLUMNS);
-      echo '<table class="settingsTable">';
-      $h = -1;
-      echo '<tr style="font-weight:bold;text-align: center;">';
-      foreach($columns as $column) {
-            echo '<td>' . $column . '</td>';
-      }
-      echo '</tr>';
-      $times = $pars[SCHEDULE_TIMES];
-	  $days = $pars[SCHEDULE_DAYS];
-      $cmdsOn = $pars[SCHEDULE_COMMANDSON];
-      $cmdsOff = $pars[SCHEDULE_COMMANDSOFF];
-      $modes = $pars[SCHEDULE_MODES];
-      $row = 0;
-      for($row = 0; $row < (count($times) + 5); $row++) {
-         if ($row == 0) {
-            $class = 'day';
-         } else if ($row < 5) {
-            $class = 'sun';
+         } else if (is_array($v)) {
+            continue;
          } else {
-            $class = 'fixed';
+            $v = trim((string)$v);
          }
-         echo "<tr class='$class'>";
-         if ($row == $d) {
-            echo '<td style = "background-color: LightGreen;">';
-         } else {
-            echo '<td>';
-         }
-         if($row < 5) {
-            echo $periods[$row] . '&nbsp;&nbsp;</td>';
-         } else {
-            echo "<input type='text' autocomplete='off' size='10' name='" . SCHEDULE_TIMES . "[]' value='" . htmlspecialchars($times[$row -5], ENT_QUOTES) . "'/> &nbsp;&nbsp;</td>";
-         }
-		 echo '<td>';
-		 $dayExists = array_key_exists($row, $days);
-		 for($dy = 0;$dy <7;$dy++) {
-			echo "<input type='checkbox' name='" . SCHEDULE_DAYS . "[$row][]' value=$dy" . ($dayExists && in_array($dy, $days[$row]) ? " checked" : "") . "/>"; 
-		 }
-		 echo '</td>';
-         echo "<td><input type='text' autocomplete='off' size='24' name='" . SCHEDULE_COMMANDSON . "[]' value='" . htmlspecialchars($cmdsOn[$row], ENT_QUOTES) . "'/>&nbsp;&nbsp;</td>";
-         echo "<td><input type='text' autocomplete='off' size='24' name='" . SCHEDULE_COMMANDSOFF . "[]' value='" . htmlspecialchars($cmdsOff[$row], ENT_QUOTES) . "'/>&nbsp;&nbsp;</td>";
-         echo "<td><input type='text' autocomplete='off' size='24' name='" . SCHEDULE_MODES . "[]' value='" . htmlspecialchars($modes[$row], ENT_QUOTES) . "'/>&nbsp;&nbsp;</td>";
-         echo '</tr>';
+         $save[$key] = $v;
       }
-      echo '</table>';
+      // rows without any ticked day are not posted, keep them as empty lists
+      if (!isset($save[SCHEDULE_DAYS])) $save[SCHEDULE_DAYS] = array();
+      return $save;
    }
 
-   function displayLog() {
-      if (file_exists(getLogFile())) {
-         $logData = file_get_contents(getLogFile());
-         echo str_replace(PHP_EOL, '<BR>', $logData);
-      } else {
-         echo "No log data found";
-      }
+   function writePars($file, $pars) {
+      unset($pars[SCHEDULE_FIFOIN], $pars[SCHEDULE_FIFOOUT]);
+      return file_put_contents(BASE_DIR . '/' . $file, json_encode($pars)) !== false;
    }
 
-   function mainHTML() {
-      global $schedulePID, $schedulePars, $debugString, $showLog;
-      echo '<!DOCTYPE html>';
-      echo '<html>';
-         echo '<head>';
-            echo '<meta name="viewport" content="width=550, initial-scale=1">';
-            echo '<title>' . CAM_STRING . ' Schedule</title>';
-            echo '<link rel="stylesheet" href="css/style_minified.css" />';
-            echo '<link rel="stylesheet" href="' . getStyle() . '" />';
-            echo '<script src="js/style_minified.js"></script>';
-            echo '<script src="js/script.js"></script>';
-         echo '</head>';
-         echo '<body onload="schedule_rows()">';
-            echo '<div class="navbar navbar-inverse navbar-fixed-top" role="navigation">';
-               echo '<div class="container">';
-                  echo '<div class="navbar-header">';
-                     if ($showLog) {
-                        echo '<a class="navbar-brand" href="schedule.php">';
-                     } else {
-                        echo '<a class="navbar-brand" href="' . ROOT_PHP . '">';
-                     }
-                     echo '<span class="glyphicon glyphicon-chevron-left"></span>Back - ' . CAM_STRING . '</a>';
-                  echo '</div>';
-               echo '</div>';
-            echo '</div>';
-          
-            echo '<div class="container-fluid">';
-               echo '<form action="schedule.php" method="POST">';
-                  if ($debugString) echo $debugString . "<br>";
-                  if ($showLog) {
-                     displayLog();
-                  } else {
-                     echo '<div class="container-fluid text-center">';
-                     echo "&nbsp;&nbsp;<button class='btn btn-primary' type='submit' name='action' value='save'>" . BTN_SAVE . "</button>";
-                     echo "&nbsp;&nbsp;<button class='btn btn-primary' type='submit' name='action' value='backup'>" . BTN_BACKUP . "</button>";
-                     echo "&nbsp;&nbsp;<button class='btn btn-primary' type='submit' name='action' value='restore'>" . BTN_RESTORE . "</button>";
-                     echo "&nbsp;&nbsp;<button class='btn btn-primary' type='submit' name='action' value='showlog'>" . BTN_SHOWLOG . "</button>";
-                     echo "&nbsp&nbsp;<button class='btn btn-primary' type='submit' name='action' value='downloadlog'>" . BTN_DOWNLOADLOG . "</button>";
-                     echo "&nbsp&nbsp;<button class='btn btn-primary' type='submit' name='action' value='clearlog'>" . BTN_CLEARLOG . "</button>";
-                     echo '&nbsp;&nbsp;&nbsp;&nbsp;';
-                     if ($schedulePID != 0) {
-                        echo "<button class='btn btn-danger' type='submit' name='action' value='stop'>" . BTN_STOP . "</button>";
-                     } else {
-                        echo "<button class='btn btn-danger' type='submit' name='action' value='start'>" . BTN_START . "</button>";
-                     }
-                     echo "<br></div>";
-                     showScheduleSettings($schedulePars);
-                  }
-               echo '</form>';
-            echo '</div>';
-            cmdHelp();
-         echo '</body>';
-      echo '</html>';
-   }
-
-function cmdHelp() {
-   echo "<div class='container-fluid text-center'>";
-   echo "<div class='panel-group' id='accordion'>";
-     echo "<div class='panel panel-default'>";
-       echo "<div class='panel-heading'>";
-         echo "<h2 class='panel-title'>";
-           echo "<a data-toggle='collapse' data-parent='#accordion' href='#collapseOne'>Command reference</a>";
-         echo "</h2>";
-       echo "</div>";
-       echo "<div id='collapseOne' class='panel-collapse collapse'>";
-         echo "<div class='panel-body'>";
-           echo "<table class='settingsTable'>";
-             echo "<tr><th>Command</th><th>Parameters</th><th>Description</th></tr>";
-             echo "<tr><td>md</td><td>0/1</td><td>0/1 stop/start motion detection</td></tr>";
-             echo "<tr><td>ca c [t]</td><td>0/1</td><td>c=0/1 stop/start video capture; t=capture secs if present</td></tr>";
-             echo "<tr><td>im</td><td></td><td>capture image</td></tr>";
-             echo "<tr><td>tl</td><td>0/1</td><td>stop/start timelapse</td></tr>";
-             echo "<tr><td>tv</td><td>number</td><td>set timelapse interval between images n * 1/10 seconds.</td></tr>";
-             echo "<tr><td>vi</td><td>number</td><td>set video split interval in seconds. 0=Off</td></tr>";
-             echo "<tr><td>an</td><td>text</td><td>set annotation</td></tr>";
-             echo "<tr><td>ab</td><td>0/1</td><td>annotation background</td></tr>";
-             echo "<tr><td>px</td><td>AAAA BBBB CC DD EEEE FFFF GG</td><td>set video+img resolution  video = AxB px, C fps, divider G,boxed with D fps, image = ExF px)</td></tr>";
-             echo "<tr><td>as</td><td>number</td><td>set text size (v3 only)  0-99</td></tr>";
-             echo "<tr><td>at</td><td>E YYY UUU VVV</td><td>set custom text colour (v3 only)</td></tr>";
-             echo "<tr><td>ac</td><td>E YYY UUU VVV</td><td>set custom background colour (v3 only)</td></tr>";
-             echo "<tr><td>sh</td><td>number</td><td>set sharpness (range: [-100;100]; default: 0)</td></tr>";
-             echo "<tr><td>co</td><td>number</td><td>set contrast (range: [-100;100]; default: 0)</td></tr>";
-             echo "<tr><td>br</td><td>number</td><td>set brightness (range: [0;100]; default: 50)</td></tr>";
-             echo "<tr><td>sa</td><td>number</td><td>set saturation (range: [-100;100]; default: 0)</td></tr>";
-             echo "<tr><td>is</td><td>number</td><td>set ISO (range: [100;800]; default: 0=auto)</td></tr>";
-             echo "<tr><td>vs</td><td>number</td><td>0/1 turn off/on video stabilisation</td></tr>";
-             echo "<tr><td>ec</td><td>number</td><td>set exposure compensation (range: [-10;10]; default: 0)</td></tr>";
-             echo "<tr><td>em</td><td>keyword</td><td>set exposure mode (range: [off/auto/night/nightpreview/backlight/spotlight/sports/snow/beach/verylong/fixedfps/antishake/fireworks]; default: auto)</td></tr>";
-             echo "<tr><td>wb</td><td>keyword</td><td>set white balance (range: [off/auto/sun/cloudy/shade/tungsten/fluorescent/incandescent/flash/horizon]; default: auto)</td></tr>";
-             echo "<tr><td>ag</td><td>RRRR BBBB</td><td>set white balance off red_gain blue gain (100 = 1.0; default: 150)</td></tr>";
-             echo "<tr><td>mm</td><td>keyword</td><td>set metering mode (range: [average/spot/backlit/matrix]; default: average)</td></tr>";
-             echo "<tr><td>ie</td><td>keyword</td><td>set image effect (range: [none/negative/solarise/posterize/whiteboard/blackboard/sketch/denoise/emboss/oilpaint/hatch/gpen/pastel/watercolour/film/blur/saturation/colourswap/washedout/posterise/colourpoint/colourbalance/cartoon]; default: none)</td></tr>";
-             echo "<tr><td>ce</td><td>A BB CC</td><td>set colour effect (A BB CC; A=enable/disable, effect = B:C)</td></tr>";
-             echo "<tr><td>ro</td><td>number</td><td>set rotation (range: [0/90/180/270]; default: 0)</td></tr>";
-             echo "<tr><td>fl</td><td>number</td><td>set flip (range: [0;3]; default: 0)</td></tr>";
-             echo "<tr><td>ri</td><td>AAAAA BBBBB CCCCC DDDDD</td><td>set sensor region (x=A, y=B, w=C, h=D)</td></tr>";
-             echo "<tr><td>qu</td><td>number</td><td>set output image quality (range: [0;100]; default: 85)</td></tr>";
-             echo "<tr><td>pv</td><td>QQ WWW DD</td><td>set preview quality (0-100) default 25, Width (128-1024) default 512, Divider (1-16) default 1</td></tr>";
-             echo "<tr><td>bu</td><td>number</td><td>set pre-trigger video buffer in mSec (approx)</td></tr>";
-             echo "<tr><td>bi</td><td>number</td><td>set output video bitrate (range: [0;25000000]; default: 17000000)</td></tr>";
-             echo "<tr><td>bo</td><td>number</td><td>set MP4Box mode (0=off, 1=inline, 2=background";
-             echo "<tr><td>rl</td><td>0/1</td><td>0/1 disable / enable raw layer</td></tr>";
-             echo "<tr><td>rs</td><td>1</td><td>Reset user config to default</td></tr>";
-             echo "<tr><td>ru</td><td>0/1</td><td>0/1 halt/restart RaspiMJPEG and release camera</td></tr>";
-             echo "<tr><td>sc</td><td>1</td><td>Rescan for video and image indexes</td></tr>";
-             echo "<tr><td>sy</td><td>macro</td><td>Execute macro</td></tr>";
-             echo "<tr><td>um</td><td>number macro</td><td>Update macro</td></tr>";
-             echo "<tr><td>vp</td><td>0/1</td><td>Disable/Enable vector preview</td></tr>";
-             echo "<tr><td>mn</td><td>number</td><td>Set motion_noise</td></tr>";
-             echo "<tr><td>mt</td><td>number</td><td>Set motion_threshold</td></tr>";
-             echo "<tr><td>mi</td><td>filename</td><td>Set motion_image</td></tr>";
-             echo "<tr><td>ms</td><td>number</td><td>Set motion_initframes</td></tr>";
-             echo "<tr><td>mb</td><td>number</td><td>Set motion_startframes</td></tr>";
-             echo "<tr><td>me</td><td>number</td><td>Set motion_stopframes</td></tr>";
-             echo "<tr><td>mf</td><td>0/1</td><td>Enable saving motion vectors</td></tr>";
-             echo "<tr><td>mz</td><td>0/1</td><td>Disable motion mask</td></tr>";
-             echo "<tr><td>cn</td><td>1/2</td><td>Select camera (Compute model only)</td></tr>";
-             echo "<tr><td>st</td><td>0/1</td><td>Off/On Camera statistics</td></tr>";
-             echo "<tr><td>qp</td><td>A BB CC</td><td>Set h264 encoding pars A=minimise_frag BB=initial_quant CC=encode_qp</td></tr>";
-             echo "<tr><td>ls</td><td>number</td><td>Set Max log size. 0 disable logging</td></tr>";
-             echo "<tr><td>hp</td><td>number</td><td>Set hdmi_preview off/on</td></tr>";
-           echo "</table>";
-         echo "</div>";
-       echo "</div>";
-     echo "</div>";
-   echo "</div>";
-   echo "</div>";
-}
- 
    function sendReset() {
       global $schedulePars;
       writeLog("Send Schedule reset");
-      $fifo = fopen($schedulePars[SCHEDULE_FIFOIN], "w");
-      fwrite($fifo, SCHEDULE_RESET);
-      fclose($fifo);
-      sleep(1);
+      // r+ never blocks, even when the scheduler is not running
+      $fifo = @fopen($schedulePars[SCHEDULE_FIFOIN], "r+");
+      if ($fifo) {
+         fwrite($fifo, SCHEDULE_RESET);
+         fclose($fifo);
+         sleep(1);
+      }
    }
-   
+
    function sendCmds($cmdString, $period = false) {
       global $schedulePars;
-	  if($cmdString && ($period === false || isDayActive($period))) {
-		$cmds = explode(';', $cmdString);
-	    foreach ($cmds as $cmd) {
-		  if ($cmd != "") {
-			$cmd = trim($cmd);
-			writeLog("Send $cmd");
-			$fifo = fopen($schedulePars[SCHEDULE_FIFOOUT], "w");
-			fwrite($fifo, $cmd . "\n");
-			fclose($fifo);
-			sleep(2);
-		  }
-        }
-	  }
+      if($cmdString && ($period === false || isDayActive($period))) {
+         $cmds = explode(';', $cmdString);
+         foreach ($cmds as $cmd) {
+            $cmd = trim($cmd);
+            if ($cmd != "") {
+               writeLog("Send $cmd");
+               $fifo = fopen($schedulePars[SCHEDULE_FIFOOUT], "w");
+               fwrite($fifo, $cmd . "\n");
+               fclose($fifo);
+               sleep(2);
+            }
+         }
+      }
    }
-   
+
    function getTimeOffset() {
       global $schedulePars;
-      if (is_numeric($schedulePars[SCHEDULE_GMTOFFSET])) {
-         $offset = $schedulePars[SCHEDULE_GMTOFFSET];
-      } else {
-         date_default_timezone_set($schedulePars[SCHEDULE_GMTOFFSET]);
-         $offset = date_offset_get(new DateTime("now")) / 3600; 
+      $tz = $schedulePars[SCHEDULE_GMTOFFSET];
+      if (is_numeric($tz)) {
+         return (float)$tz;
       }
-      return $offset;
+      if (!@date_default_timezone_set(trim($tz))) {
+         return 0;
+      }
+      return date_offset_get(new DateTime("now")) / 3600;
    }
-   
+
+   // current local time using the configured offset or time zone
+   function localDate($format) {
+      global $schedulePars;
+      $offset = getTimeOffset();
+      if (is_numeric($schedulePars[SCHEDULE_GMTOFFSET])) {
+         return gmdate($format, time() + (int)round($offset * 3600));
+      }
+      return date($format);
+   }
+
    function getCurrentLocalTime($Minutes) {
-      $localTime = strftime("%H:%M");
+      $localTime = localDate("H:i");
       if ($Minutes) {
          $localTime = substr($localTime,0,2) * 60 + substr($localTime,3,2);
       }
       return $localTime;
    }
-   
-   function getSunrise($format) {
+
+   // sunrise or sunset as decimal hours in local time, null when the sun does not rise/set (polar day or night)
+   function sunHours($which) {
       global $schedulePars;
-      return date_sunrise(time(), $format, $schedulePars[SCHEDULE_LATITUDE], $schedulePars[SCHEDULE_LONGITUDE], SCHEDULE_ZENITH, getTimeOffset());
+      $info = date_sun_info(time(), (float)$schedulePars[SCHEDULE_LATITUDE], (float)$schedulePars[SCHEDULE_LONGITUDE]);
+      if (!isset($info[$which]) || !is_int($info[$which])) return null;
+      $h = fmod($info[$which] / 3600.0 + getTimeOffset(), 24.0);
+      return $h < 0 ? $h + 24 : $h;
    }
-   
-   function getSunset($format) {
-      global $schedulePars; 
-      return date_sunset(time(), $format, $schedulePars[SCHEDULE_LATITUDE], $schedulePars[SCHEDULE_LONGITUDE], SCHEDULE_ZENITH, getTimeOffset());
+
+   function formatHours($h) {
+      if ($h === null) return '--:--';
+      $m = (int)round($h * 60) % 1440;
+      return sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+   }
+
+   function getSunrise() {
+      return sunHours('sunrise');
+   }
+
+   function getSunset() {
+      return sunHours('sunset');
    }
 
    function findFixedTimePeriod($cMins) {
@@ -521,33 +293,42 @@ function cmdHelp() {
          $fMins = $times[$i];
          $j = strpos($fMins, ':');
          if ($j !== false) {
-		   $fMins = substr($fMins, 0, $j) * 60 + substr($fMins, $j+1);
+           $fMins = (int)substr($fMins, 0, $j) * 60 + (int)substr($fMins, $j+1);
            if ($fMins < $cMins) {
              if ($fMins > $maxLessV) {
                $maxLessV = $fMins;
                $period = $i;
              }
            }
-		 }
+         }
       }
       return $period + 5;
    }
-   
+
    function isDayActive($period) {
       global $schedulePars;
-	  $days = $schedulePars[SCHEDULE_DAYS];
-	  $day = strftime("%w");
-	  return in_array($day,$days[$period]);
+      $days = $schedulePars[SCHEDULE_DAYS];
+      if (!isset($days[$period]) || !is_array($days[$period])) return false;
+      return in_array((int)localDate("w"), $days[$period]);
    }
-   
-   //Return period of day 1=Night,2=Dawn,3=Day,4=Dusk
+
+   //Return period of day 0=AllDay 1=Night,2=Dawn,3=Day,4=Dusk, 5+ fixed times
    function dayPeriod() {
       global $schedulePars;
       $t = getCurrentLocalTime(true);
+      $period = 0;
       switch($schedulePars[SCHEDULE_DAYMODE]) {
          case SCHEDULE_MODE_SUN:
-            $sr = 60 * getSunrise(SUNFUNCS_RET_DOUBLE);
-            $ss = 60 * getSunset(SUNFUNCS_RET_DOUBLE);
+            $sr = getSunrise();
+            $ss = getSunset();
+            if ($sr === null || $ss === null) {
+               // polar day or night: decide by whether the sun is up at noon
+               $info = date_sun_info(time(), (float)$schedulePars[SCHEDULE_LATITUDE], (float)$schedulePars[SCHEDULE_LONGITUDE]);
+               $period = (isset($info['sunrise']) && $info['sunrise'] === true) ? 3 : 1;
+               break;
+            }
+            $sr *= 60;
+            $ss *= 60;
             if ($t < ($sr + $schedulePars[SCHEDULE_DAWNSTARTMINUTES])) {
                $period = 1;
             } else if ($t < ($sr + $schedulePars[SCHEDULE_DAYSTARTMINUTES])) {
@@ -564,12 +345,12 @@ function cmdHelp() {
             $period = 0;
             break;
          case SCHEDULE_MODE_FIXED:
-			$period = findFixedTimePeriod($t);
+            $period = findFixedTimePeriod($t);
             break;
       }
       return $period;
    }
-   
+
    function openPipe($pipeName) {
       if (!file_exists($pipeName)) {
          writeLog("Making Pipe to receive capture commands $pipeName");
@@ -582,7 +363,7 @@ function cmdHelp() {
       stream_set_blocking($pipe,false);
       return $pipe;
    }
-   
+
    function checkMotion($pipe) {
       if ( is_bool( $pipe ) ) { // Fail gracefully, if pipe was not opened successfully.
          return "";
@@ -596,14 +377,14 @@ function cmdHelp() {
    }
 
    function purgeLog() {
-	  $logSize = getLogSize();
+      $logSize = getLogSize();
       if (file_exists(getLogFile()) && $logSize > 0) {
-	     $logLines = file(getLogFile());
-		 $logCount = count($logLines);
-		 if($logCount > $logSize) {
-			 file_put_contents(getLogFile(), implode('', array_slice($logLines, -$logSize)));
-		 }
-	  }
+         $logLines = file(getLogFile());
+         $logCount = count($logLines);
+         if($logCount > $logSize) {
+            file_put_contents(getLogFile(), implode('', array_slice($logLines, -$logSize)));
+         }
+      }
    }
 
    function purgeFiles() {
@@ -635,24 +416,24 @@ function cmdHelp() {
                   }
                }
             } else if ($videoHours > 0) {
-				if(pathinfo(BASE_DIR . '/' . MEDIA_PATH . "/$file", PATHINFO_EXTENSION) == 'zip') {
-					$fModHours = filemtime(BASE_DIR . '/' . MEDIA_PATH . "/$file") / 3600;
-					if ($fModHours > 0 && ($currentHours - $fModHours) > $videoHours) {
-						unlink(BASE_DIR . '/' . MEDIA_PATH . "/$file");
-						writeLog("Purged orphan zip $file");
-					}
-				}
-			}
+               if(pathinfo(BASE_DIR . '/' . MEDIA_PATH . "/$file", PATHINFO_EXTENSION) == 'zip') {
+                  $fModHours = filemtime(BASE_DIR . '/' . MEDIA_PATH . "/$file") / 3600;
+                  if ($fModHours > 0 && ($currentHours - $fModHours) > $videoHours) {
+                     unlink(BASE_DIR . '/' . MEDIA_PATH . "/$file");
+                     writeLog("Purged orphan zip $file");
+                  }
+               }
+            }
          }
       }
-	  
+
       if ($schedulePars[SCHEDULE_PURGESPACEMODE] > 0) {
          $totalSize = disk_total_space(BASE_DIR . '/' . MEDIA_PATH) / 1024; //KB
-         $level =  str_replace(array('%','G','B', 'g','b'), '', $schedulePars[SCHEDULE_PURGESPACELEVEL]);
+         $level = (float)str_replace(array('%','G','B', 'g','b'), '', $schedulePars[SCHEDULE_PURGESPACELEVEL]);
          switch ($schedulePars[SCHEDULE_PURGESPACEMODE]) {
             case 1:
             case 2:
-               $level = min(max($schedulePars[SCHEDULE_PURGESPACELEVEL], 3), 97) * $totalSize / 100;
+               $level = min(max($level, 3), 97) * $totalSize / 100;
                break;
             case 3:
             case 4:
@@ -663,7 +444,6 @@ function cmdHelp() {
             case 1: //Free Space
             case 3:
                $currentAvailable = disk_free_space(BASE_DIR . '/' . MEDIA_PATH) / 1024; //KB
-               //writeLog(" free space purge total $totalSize current: $currentAvailable target: $level");
                if ($currentAvailable < $level) {
                   $pFiles = getSortedFiles(false); //files in latest to earliest order
                   while($currentAvailable < $level && count($pFiles) > 0){
@@ -671,12 +451,10 @@ function cmdHelp() {
                      $purgeCount++;
                   }
                }
-               //writeLog("Finished. Current now: $currentAvailable");
                break;
             case 2: // Max usage
             case 4:
                $pFiles = getSortedFiles(false); //files in latest to earliest order
-               //writeLog(" Max space purge max: $level");
                foreach ($pFiles as $pFile) {
                   $del = ($level <= 0);
                   $level -= deleteFile($pFile, $del);
@@ -699,9 +477,8 @@ function cmdHelp() {
       $timeoutMax = 0; //Loop test will terminate after this (seconds) (used in test), set to 0 forever
       while($timeoutMax == 0 || $timeout < $timeoutMax) {
          writeLog("Scheduler loop is started");
-		 $lastOnCommand = -1;
+         $lastOnCommand = -1;
          $lastDayPeriod = -1;
-		 $lastDay = -1;
          $pollTime = $schedulePars[SCHEDULE_CMDPOLL];
          $slowPoll = 0;
          $managechecktime = time();
@@ -714,7 +491,7 @@ function cmdHelp() {
             $autocapturetime = 0;
             $autocapture = 0;
          }
-         $lastStatusTime = filemtime(BASE_DIR . "/status_mjpeg.txt");
+         $lastStatusTime = @filemtime(BASE_DIR . "/status_mjpeg.txt");
          while($timeoutMax == 0 || $timeout < $timeoutMax) {
             usleep($pollTime * 1000000);
             //Check for incoming motion capture requests
@@ -730,7 +507,6 @@ function cmdHelp() {
                   }
                } else {
                   writeLog('Stop capture request ignored, already stopped');
-                  
                }
             } else if ($cmd == SCHEDULE_START || $autocapture == 1) {
                if ($lastDayPeriod >= 0) {
@@ -757,13 +533,13 @@ function cmdHelp() {
             } else if ($cmd !="") {
                writeLog("Ignore FIFO char $cmd");
             }
-            
+
             //slow Poll actions done every 10 fast loops times
             $slowPoll--;
             if ($slowPoll < 0) {
                $slowPoll = 10;
                $timenow = time();
-			   $forcePeriodCheck = 0;
+               $forcePeriodCheck = 0;
                if ($lastOnCommand >= 0) {
                   //Capture in progress, Check for maximum
                   if ($schedulePars[SCHEDULE_MAXCAPTURE] > 0) {
@@ -772,7 +548,7 @@ function cmdHelp() {
                         sendCmds($schedulePars[SCHEDULE_COMMANDSOFF][$lastOnCommand]);
                         $lastOnCommand = -1;
                         $autocapture = 0;
-						$forcePeriodCheck = 1;
+                        $forcePeriodCheck = 1;
                      }
                   }
                }
@@ -780,17 +556,14 @@ function cmdHelp() {
                if ($timenow > $modechecktime || $forcePeriodCheck == 1) {
                   //Set next period check time
                   $modechecktime = $timenow + $schedulePars[SCHEDULE_MODEPOLL];
-				  $forcePeriodCheck = 0;
+                  $forcePeriodCheck = 0;
                   if ($lastOnCommand < 0) {
                      //No capture in progress, Check if day period changing
                      $newDayPeriod = dayPeriod();
-					 $newDay = strftime("%w");
-//                     if ($newDayPeriod != $lastDayPeriod || (($newDay != $lastDay) && ($schedulePars[SCHEDULE_DAYMODE] == SCHEDULE_MODE_FIXED))) {
                      if ($newDayPeriod != $lastDayPeriod) {
                         writeLog("New period detected $newDayPeriod");
                         sendCmds($schedulePars[SCHEDULE_MODES][$newDayPeriod], $newDayPeriod);
                         $lastDayPeriod = $newDayPeriod;
-						$lastDay = $newDay;
                      }
                   }
                }
@@ -800,12 +573,12 @@ function cmdHelp() {
                   $managechecktime = $timenow + $schedulePars[SCHEDULE_MANAGEMENTINTERVAL];
                   writeLog("Scheduled management tasks. Next at $managechecktime");
                   purgeFiles();
-			      $cmd = $schedulePars[SCHEDULE_MANAGEMENTCOMMAND];
+                  $cmd = $schedulePars[SCHEDULE_MANAGEMENTCOMMAND];
                   if ($cmd != '') {
                      writeLog("exec_macro: $cmd");
                      sendCmds("sy $cmd");
                   }
-            	  purgeLog();
+                  purgeLog();
                }
                if ($autocapturetime > 0 && $timenow > $autocapturetime) {
                   // Request autocapture and set next interval
@@ -818,8 +591,8 @@ function cmdHelp() {
                   // 2 seconds between tests to allow time for commands to take effect
                   $autocameratime = $timenow + 2;
                   clearstatcache();
-                  $modTime = filemtime(BASE_DIR . "/status_mjpeg.txt");
-                  if (file_get_contents(BASE_DIR . "/status_mjpeg.txt") == 'halted') {
+                  $modTime = @filemtime(BASE_DIR . "/status_mjpeg.txt");
+                  if (@file_get_contents(BASE_DIR . "/status_mjpeg.txt") == 'halted') {
                      if ($modTime > $lastStatusTime) {
                         writeLog("autocamera startup");
                         sendCmds('ru 1');
@@ -839,10 +612,345 @@ function cmdHelp() {
          }
       }
    }
-   
-   if (!$cliCall) {
-      mainHTML();
-   } else {
+
+   if ($cliCall) {
       mainCLI();
+      exit;
    }
+
+   // ------------------------------------------------------------------
+   // Web page
+   // ------------------------------------------------------------------
+   require_once(BASE_DIR . '/ui.php');
+   requireUserLevel(USERLEVEL_MAX);
+
+   function redirectSchedule($done = '', $extra = '') {
+      header('Location: schedule.php' . ($done ? '?done=' . urlencode($done) : '') . $extra, true, 303);
+      exit;
+   }
+
+   if (isset($_REQUEST['action']) && $_REQUEST['action'] == 'downloadlog') {
+      if (file_exists(getLogFile())) {
+         header("Content-Type: text/plain");
+         header("Content-Disposition: attachment; filename=\"" . date('Ymd-His-') . LOGFILE_SCHEDULE . "\"");
+         readfile(getLogFile());
+         exit;
+      }
+      redirectSchedule();
+   }
+
+   if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
+      rejectCrossSiteRequest();
+      switch($_POST['action']) {
+         case 'start':
+            startSchedule();
+            sleep(1);
+            redirectSchedule();
+         case 'stop':
+            stopSchedule(getSchedulePID());
+            sleep(1);
+            redirectSchedule();
+         case 'save':
+            writeLog('Saved schedule settings');
+            writePars(SCHEDULE_CONFIG, parsFromPost($_POST));
+            $schedulePars = loadPars(BASE_DIR . '/' . SCHEDULE_CONFIG);
+            sendReset();
+            redirectSchedule('saved');
+         case 'backup':
+            writeLog('Backed up schedule settings');
+            writePars(SCHEDULE_CONFIGBACKUP, $schedulePars);
+            redirectSchedule('backup');
+         case 'restore':
+            if (file_exists(BASE_DIR . '/' . SCHEDULE_CONFIGBACKUP)) {
+               writeLog('Restored schedule settings');
+               writePars(SCHEDULE_CONFIG, loadPars(BASE_DIR . '/' . SCHEDULE_CONFIGBACKUP));
+               $schedulePars = loadPars(BASE_DIR . '/' . SCHEDULE_CONFIG);
+               sendReset();
+               redirectSchedule('restored');
+            }
+            redirectSchedule('nobackup');
+         case 'clearlog':
+            if (file_exists(getLogFile())) {
+               unlink(getLogFile());
+            }
+            redirectSchedule('logcleared', '&log=1');
+      }
+      redirectSchedule();
+   }
+
+   $commandReference = array(
+      array('ca', '0/1 [t]', 'Stop/start video capture, optional t = capture seconds'),
+      array('im', '', 'Capture image'),
+      array('tl', '0/1', 'Stop/start timelapse'),
+      array('md', '0/1', 'Stop/start motion detection'),
+      array('tv', 'n', 'Timelapse interval in 1/10 seconds'),
+      array('vi', 'n', 'Video split interval in seconds, 0 = off'),
+      array('an', 'text', 'Set annotation'),
+      array('ab', '0/1', 'Annotation background'),
+      array('as', 'n', 'Annotation text size 0-99'),
+      array('at', 'E Y U V', 'Custom text colour (E = enable)'),
+      array('ac', 'E Y U V', 'Custom background colour (E = enable)'),
+      array('px', 'AAAA BBBB CC DD EEEE FFFF GG', 'Video A x B px at C fps, boxed at D fps, image E x F px, divider G'),
+      array('sh', 'n', 'Sharpness -100..100, default 0'),
+      array('co', 'n', 'Contrast -100..100, default 0'),
+      array('br', 'n', 'Brightness 0..100, default 50'),
+      array('sa', 'n', 'Saturation -100..100, default 0'),
+      array('is', 'n', 'ISO 100..800, 0 = auto'),
+      array('vs', '0/1', 'Video stabilisation off/on'),
+      array('ec', 'n', 'Exposure compensation -10..10, default 0'),
+      array('em', 'keyword', 'Exposure mode: off/auto/night/nightpreview/backlight/spotlight/sports/snow/beach/verylong/fixedfps/antishake/fireworks'),
+      array('wb', 'keyword', 'White balance: off/auto/sun/cloudy/shade/tungsten/fluorescent/incandescent/flash/horizon/greyworld'),
+      array('ag', 'RRRR BBBB', 'Red and blue gain when white balance is off (100 = 1.0)'),
+      array('mm', 'keyword', 'Metering mode: average/spot/backlit/matrix'),
+      array('ie', 'keyword', 'Image effect: none/negative/solarise/sketch/denoise/emboss/oilpaint/hatch/gpen/pastel/watercolour/film/blur/saturation/colourswap/washedout/posterise/cartoon'),
+      array('ce', 'A BB CC', 'Colour effect, A = enable, effect U = B, V = C'),
+      array('ro', 'n', 'Rotation 0/90/180/270'),
+      array('fl', 'n', 'Flip 0 = none, 1 = horizontal, 2 = vertical, 3 = both'),
+      array('ri', 'A B C D', 'Sensor region x = A, y = B, w = C, h = D'),
+      array('ss', 'n', 'Shutter speed in µs, 0 = auto'),
+      array('qu', 'n', 'Image quality 0..100'),
+      array('pv', 'QQ WWW DD', 'Preview quality, width and divider'),
+      array('bu', 'n', 'Pre-trigger video buffer in ms'),
+      array('bi', 'n', 'Video bitrate 0..25000000'),
+      array('bo', 'n', 'MP4Box mode 0 = off, 1 = inline, 2 = background'),
+      array('rl', '0/1', 'Raw layer off/on'),
+      array('st', '0/1', 'Image statistics off/on'),
+      array('qp', 'A BB CC', 'H.264 encoding: minimise_frag A, initial_quant B, encode_qp C'),
+      array('hp', '0/1', 'HDMI preview off/on'),
+      array('cn', '1/2', 'Select camera (Compute Module)'),
+      array('wd', 'II EE', 'Watchdog interval (1/10 s) and error count'),
+      array('rs', '1', 'Reset user config to default'),
+      array('ru', '0/1', 'Halt/restart raspimjpeg and release camera'),
+      array('sc', '1', 'Rescan video and image indexes'),
+      array('sy', 'macro', 'Execute a macro from the macros folder'),
+      array('um', 'n macro', 'Update job macro n'),
+      array('vp', '0/1', 'Motion vector preview off/on'),
+      array('mx', '0/1/2', 'Motion detection internal/external/monitor'),
+      array('mn', 'n', 'Motion noise level'),
+      array('mt', 'n', 'Motion threshold'),
+      array('mc', 'n', 'Motion clipping factor'),
+      array('mi', 'file', 'Motion mask image'),
+      array('ms', 'n', 'Motion initial frames to ignore'),
+      array('mb', 'n', 'Motion change frames to start'),
+      array('me', 'n', 'Motion still frames to stop'),
+      array('mf', '0/1', 'Save motion vectors to .dat file'),
+      array('mz', '0/1', 'Disable motion mask'),
+      array('ls', 'n', 'Max. log size in lines, 0 = logging off'),
+   );
+
+   function paramInput($key, $type = 'text', $hint = null, $attrs = '') {
+      global $schedulePars;
+      echo '<label>' . h(t('sp.' . $key));
+      echo '<input class="input" type="' . $type . '" name="' . h($key) . '" value="' . h($schedulePars[$key]) . '" autocomplete="off"' . $attrs . '>';
+      if ($hint) echo '<small>' . h(t($hint)) . '</small>';
+      echo '</label>';
+   }
+
+   $showLog = isset($_GET['log']);
+   $schedulePID = getSchedulePID();
+   $flashes = array(
+      'saved' => array('sched.saved', 'success'), 'backup' => array('sched.backed_up', 'success'),
+      'restored' => array('sched.restored', 'success'), 'nobackup' => array('motion.no_backup', 'error'),
+      'logcleared' => array('sched.log_cleared', 'success'),
+   );
+   pageHeader(t('sched.title'), 'schedule');
+   if (isset($_GET['done']) && isset($flashes[$_GET['done']])) {
+      echo flashMessage(t($flashes[$_GET['done']][0]), $flashes[$_GET['done']][1]);
+   }
+
+   if ($showLog) {
+      $log = file_exists(getLogFile()) ? file_get_contents(getLogFile()) : '';
+?>
+<div class="page-head">
+   <h1><?php et('sched.log'); ?></h1>
+   <a class="btn btn-ghost" href="schedule.php"><?php echo icon('chevron-left'); ?><?php et('sched.back'); ?></a>
+   <a class="btn btn-soft" href="schedule.php?action=downloadlog"><?php echo icon('download'); ?><?php et('sched.download_log'); ?></a>
+   <form method="post" action="schedule.php"><button class="btn btn-soft-danger" type="submit" name="action" value="clearlog" data-confirm="<?php echo h(t('js.sched.confirm_clear_log')); ?>" data-danger><?php echo icon('trash'); ?><?php et('sched.clear_log'); ?></button></form>
+</div>
+<section class="card"><div class="card-body">
+<?php if ($log === '') { ?>
+   <p class="muted"><?php et('sched.log_empty'); ?></p>
+<?php } else { ?>
+   <pre class="log" id="log"><?php echo h($log); ?></pre>
+<?php } ?>
+</div></section>
+<?php
+      pageFooter(array('js/schedule.js'));
+      exit;
+   }
+
+   $d = dayPeriod();
+   $periodNames = array(t('sched.p_allday'), t('sched.p_night'), t('sched.p_dawn'), t('sched.p_day'), t('sched.p_dusk'));
+   $times = $schedulePars[SCHEDULE_TIMES];
+   $periodLabel = $d < 5 ? $periodNames[$d] : t('sched.p_fixed', array('t' => $times[$d - 5]));
+   $dayNames = explode(',', t('sched.days'));
+?>
+<form method="post" action="schedule.php" id="scheduleForm">
+<div class="page-head">
+   <h1><?php et('sched.title'); ?></h1>
+   <span class="sched-status<?php echo $schedulePID ? ' running' : ''; ?>"><span class="dot"></span><?php et($schedulePID ? 'sched.running' : 'sched.stopped'); ?></span>
+<?php if ($schedulePID) { ?>
+   <button class="btn btn-soft-danger" type="submit" name="action" value="stop"><?php echo icon('stop'); ?><?php et('sched.stop'); ?></button>
+<?php } else { ?>
+   <button class="btn btn-soft" type="submit" name="action" value="start"><?php echo icon('play'); ?><?php et('sched.start'); ?></button>
+<?php } ?>
+   <a class="btn btn-ghost" href="schedule.php?log=1"><?php echo icon('file-text'); ?><?php et('sched.log'); ?></a>
+   <button class="btn btn-ghost" type="submit" name="action" value="backup"><?php echo icon('download'); ?><?php et('btn.backup'); ?></button>
+   <button class="btn btn-ghost" type="submit" name="action" value="restore" data-confirm="<?php et('sched.confirm_restore'); ?>"><?php echo icon('upload'); ?><?php et('btn.restore'); ?></button>
+   <button class="btn btn-primary" type="submit" name="action" value="save"><?php echo icon('save'); ?><?php et('btn.save'); ?></button>
+</div>
+
+<div class="stack">
+   <section class="card">
+      <div class="card-body stack">
+         <div class="row" style="justify-content:space-between">
+            <div class="row">
+               <strong><?php et('sched.daymode'); ?></strong>
+               <div class="segmented" role="radiogroup" aria-label="<?php et('sched.daymode'); ?>" id="dayModeSwitch">
+<?php foreach (array(SCHEDULE_MODE_SUN => 'sched.mode_sun', SCHEDULE_MODE_ALLDAY => 'sched.mode_allday', SCHEDULE_MODE_FIXED => 'sched.mode_fixed') as $mode => $label) { ?>
+                  <button type="button" role="radio" data-mode="<?php echo $mode; ?>" aria-checked="<?php echo $schedulePars[SCHEDULE_DAYMODE] == $mode ? 'true' : 'false'; ?>" class="<?php echo $schedulePars[SCHEDULE_DAYMODE] == $mode ? 'active' : ''; ?>"><?php et($label); ?></button>
+<?php } ?>
+               </div>
+               <input type="hidden" name="<?php echo SCHEDULE_DAYMODE; ?>" id="DayMode" value="<?php echo h($schedulePars[SCHEDULE_DAYMODE]); ?>">
+            </div>
+         </div>
+         <div class="sun-info">
+            <div><?php echo icon('globe'); ?><span><small><?php et('sched.offset'); ?></small><strong><?php echo h(sprintf('%+g h', getTimeOffset())); ?></strong></span></div>
+            <div><?php echo icon('sunrise'); ?><span><small><?php et('sched.sunrise'); ?></small><strong><?php echo h(formatHours(getSunrise())); ?></strong></span></div>
+            <div><?php echo icon('sunset'); ?><span><small><?php et('sched.sunset'); ?></small><strong><?php echo h(formatHours(getSunset())); ?></strong></span></div>
+            <div><?php echo icon('clock'); ?><span><small><?php et('sched.now'); ?></small><strong><?php echo h(getCurrentLocalTime(false)); ?></strong></span></div>
+            <div class="current"><?php echo icon('calendar'); ?><span><small><?php et('sched.period'); ?></small><strong><?php echo h($periodLabel); ?></strong></span></div>
+         </div>
+      </div>
+   </section>
+
+   <section class="card">
+      <div class="card-head"><h2><?php echo icon('terminal'); ?><?php et('sched.periods'); ?></h2></div>
+      <div class="card-body">
+         <p class="muted small"><?php et('sched.periods_hint'); ?></p>
+         <div class="table-wrap">
+         <table class="periods">
+            <thead><tr>
+               <th><?php et('sched.col_period'); ?></th><th><?php et('sched.col_days'); ?></th>
+               <th><?php et('sched.col_mstart'); ?></th><th><?php et('sched.col_mstop'); ?></th><th><?php et('sched.col_pstart'); ?></th>
+            </tr></thead>
+            <tbody>
+<?php
+   for ($row = 0; $row < count($times) + 5; $row++) {
+      $class = $row == 0 ? 'day' : ($row < 5 ? 'sun' : 'fixed');
+      if ($row == $d) $class .= ' current';
+      echo '<tr class="' . $class . '">';
+      echo '<td class="period-name">';
+      if ($row < 5) {
+         echo h($periodNames[$row]);
+      } else {
+         $time = $times[$row - 5];
+         if (preg_match('/^(\d{1,2}):(\d{1,2})/', $time, $m)) $time = sprintf('%02d:%02d', $m[1], $m[2]);
+         echo '<input class="input input-sm time-input" type="time" name="' . SCHEDULE_TIMES . '[]" value="' . h($time) . '" aria-label="' . h(t('sched.col_period')) . '">';
+      }
+      echo '</td><td data-label="' . h(t('sched.col_days')) . '"><span class="days">';
+      for ($dy = 0; $dy < 7; $dy++) {
+         $checked = in_array($dy, $schedulePars[SCHEDULE_DAYS][$row]) ? ' checked' : '';
+         echo '<label class="day-chip" title="' . h($dayNames[$dy]) . '"><input type="checkbox" name="' . SCHEDULE_DAYS . '[' . $row . '][]" value="' . $dy . '"' . $checked . '><span>' . h($dayNames[$dy]) . '</span></label>';
+      }
+      echo '</span></td>';
+      foreach (array(SCHEDULE_COMMANDSON => 'sched.col_mstart', SCHEDULE_COMMANDSOFF => 'sched.col_mstop', SCHEDULE_MODES => 'sched.col_pstart') as $key => $label) {
+         echo '<td data-label="' . h(t($label)) . '"><input class="input input-sm mono" type="text" autocomplete="off" spellcheck="false" name="' . $key . '[]" value="' . h($schedulePars[$key][$row]) . '" aria-label="' . h(t($label)) . '"></td>';
+      }
+      echo "</tr>\n";
+   }
+?>
+            </tbody>
+         </table>
+         </div>
+      </div>
+   </section>
+
+   <section class="card">
+      <div class="card-head"><h2><?php echo icon('sliders'); ?><?php et('sched.params'); ?></h2></div>
+      <div class="card-body">
+         <h3 class="subhead"><?php et('sched.location'); ?></h3>
+         <div class="form-grid">
+<?php
+         paramInput(SCHEDULE_LATITUDE, 'text', null, ' inputmode="decimal"');
+         paramInput(SCHEDULE_LONGITUDE, 'text', null, ' inputmode="decimal"');
+         paramInput(SCHEDULE_GMTOFFSET, 'text', 'sp.GMTOffset_hint', ' list="tzlist"');
+?>
+         </div>
+         <datalist id="tzlist"><?php foreach (DateTimeZone::listIdentifiers() as $tz) echo '<option value="' . h($tz) . '">'; ?></datalist>
+         <div class="sun-only">
+         <h3 class="subhead"><?php et('sched.sunlimits'); ?></h3>
+         <div class="form-grid">
+<?php
+         paramInput(SCHEDULE_DAWNSTARTMINUTES, 'number');
+         paramInput(SCHEDULE_DAYSTARTMINUTES, 'number');
+         paramInput(SCHEDULE_DAYENDMINUTES, 'number');
+         paramInput(SCHEDULE_DUSKENDMINUTES, 'number');
+?>
+         </div>
+         </div>
+         <h3 class="subhead"><?php et('sched.capture'); ?></h3>
+         <div class="form-grid">
+<?php
+         paramInput(SCHEDULE_MAXCAPTURE, 'number', 'sp.Max_Capture_hint', ' min="0"');
+         paramInput(SCHEDULE_AUTOCAPTUREINTERVAL, 'number', 'sp.AutoCapture_Interval_hint', ' min="0"');
+         paramInput(SCHEDULE_AUTOCAMERAINTERVAL, 'number', 'sp.AutoCamera_Interval_hint', ' min="0"');
+?>
+         </div>
+         <h3 class="subhead"><?php et('sched.maintenance'); ?></h3>
+         <div class="form-grid">
+<?php
+         paramInput(SCHEDULE_PURGEVIDEOHOURS, 'number', 'sp.purge_hint', ' min="0"');
+         paramInput(SCHEDULE_PURGEIMAGEHOURS, 'number', 'sp.purge_hint', ' min="0"');
+         paramInput(SCHEDULE_PURGELAPSEHOURS, 'number', 'sp.purge_hint', ' min="0"');
+?>
+            <label><?php et('sp.' . SCHEDULE_PURGESPACEMODE); ?>
+               <select class="select" name="<?php echo SCHEDULE_PURGESPACEMODE; ?>">
+<?php foreach (array('sp.purge_off', 'sp.purge_minpct', 'sp.purge_maxpct', 'sp.purge_mingb', 'sp.purge_maxgb') as $i => $label) { ?>
+                  <option value="<?php echo $i; ?>"<?php echo $schedulePars[SCHEDULE_PURGESPACEMODE] == $i ? ' selected' : ''; ?>><?php et($label); ?></option>
+<?php } ?>
+               </select>
+            </label>
+<?php
+         paramInput(SCHEDULE_PURGESPACELEVEL, 'text');
+         paramInput(SCHEDULE_MANAGEMENTINTERVAL, 'number', null, ' min="1"');
+         paramInput(SCHEDULE_MANAGEMENTCOMMAND, 'text');
+?>
+         </div>
+      </div>
+      <details class="section">
+         <summary><?php et('sched.advanced'); ?></summary>
+         <div class="section-body form-grid">
+<?php
+         paramInput(SCHEDULE_CMDPOLL, 'text', null, ' inputmode="decimal"');
+         paramInput(SCHEDULE_MODEPOLL, 'number', null, ' min="1"');
+         paramInput(SCHEDULE_FIFOIN, 'text', null, ' disabled');
+         paramInput(SCHEDULE_FIFOOUT, 'text', null, ' disabled');
+?>
+         </div>
+      </details>
+   </section>
+</div>
+</form>
+
+   <section class="card" style="margin-top:16px">
+      <details class="section" style="border-top:0">
+         <summary><?php echo icon('book'); ?><?php et('sched.cmdref'); ?></summary>
+         <div class="section-body">
+            <div class="searchbox" style="margin-bottom:10px"><?php echo icon('search'); ?><input class="input" type="search" id="cmdFilter" placeholder="<?php et('sched.cmdref_filter'); ?>"></div>
+            <div class="table-wrap">
+            <table class="ref-table" id="cmdTable">
+               <thead><tr><th><?php et('sched.cmd'); ?></th><th><?php et('sched.params'); ?></th><th><?php et('sched.desc'); ?></th></tr></thead>
+               <tbody>
+<?php foreach ($commandReference as $c) { ?>
+                  <tr><td><?php echo h($c[0]); ?></td><td><?php echo h($c[1]); ?></td><td><?php echo h($c[2]); ?></td></tr>
+<?php } ?>
+               </tbody>
+            </table>
+            </div>
+         </div>
+      </details>
+   </section>
+<?php
+   pageFooter(array('js/schedule.js'));
 ?>

@@ -14,9 +14,13 @@ RED=$(tput setaf 1)
 GREEN=$(tput setaf 2)
 NORMAL=$(tput sgr0)
 
+# Enables the legacy camera (start_x) for raspimjpeg on older Raspberry Pi OS releases.
+# On Bullseye use "sudo raspi-config" > Interface Options > Legacy Camera instead.
 ASK_TO_REBOOT=0
 RASPICONFIG=/boot/config.txt
-MAINSCRIPT="./RPi_Cam_Web_Interface_Installer.sh"
+if [ -e /boot/firmware/config.txt ]; then
+  RASPICONFIG=/boot/firmware/config.txt
+fi
 
 # Version stuff moved out functions as we need it more when one time.
 versionfile="./www/config.php"
@@ -72,7 +76,7 @@ do_finish() {
       sync
       reboot
 	elif [ $? -eq 1 ]; then # no
-	  exec sudo $MAINSCRIPT
+	  exit 0
     fi
   fi
   exit 0
@@ -80,9 +84,18 @@ do_finish() {
 
 do_camera ()
 {
+  DEBIAN_MAJOR=$(cut -d. -f1 /etc/debian_version 2>/dev/null)
+  case "$DEBIAN_MAJOR" in
+    ''|*[!0-9]*) DEBIAN_MAJOR=99 ;;
+  esac
+  if [ "$DEBIAN_MAJOR" -ge 11 ]; then
+    # Bullseye needs more than start_x=1 (camera_auto_detect, KMS driver), raspi-config does it correctly
+    dialog --msgbox "On Raspberry Pi OS Bullseye enable the camera with: sudo raspi-config > Interface Options > Legacy Camera. Bookworm and newer have no legacy camera stack." 10 60
+    exit 0
+  fi
   if [ ! -e /boot/start_x.elf ]; then
     dialog --msgbox "Your firmware appears to be out of date (no start_x.elf). Please update" 20 60
-	exec sudo $MAINSCRIPT
+	exit 0
   fi
   dialog --title "Raspberry Pi camera message" \
   --backtitle "$backtitle"                     \
@@ -103,7 +116,7 @@ do_camera ()
 	do_finish
     ;;
     1) #echo "[Cansel] key pressed."
-    exec sudo $MAINSCRIPT
+    exit 0
     ;;
     3) #echo "[Disable] key pressed."
     set_config_var start_x 0 $RASPICONFIG
@@ -114,7 +127,7 @@ do_camera ()
 	do_finish
     ;;
     255) echo "[ESC] key pressed."
-    exec sudo $MAINSCRIPT
+    exit 0
     ;;
   esac
 }

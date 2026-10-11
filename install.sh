@@ -42,28 +42,49 @@ if [ $(dpkg-query -W -f='${Status}' "dialog" 2>/dev/null | grep -c "ok installed
   sudo apt-get install -y dialog
 fi
 
-#Legacy support Bullseye
-read -d . VERSION < /etc/debian_version
-echo $VERSION
-if [ $VERSION  -eq 10 ]; then
-   phpversion=7.3
-elif [ $VERSION -eq 11 ]; then
-   phpversion=7.4
-#following is done by enable legacy camera in updates raspi-config
-#   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=1/g' /boot/config.txt
-#   sudo grep -qxF 'start_x=1' /boot/config.txt || sudo sed -i '$ a start_x=1' /boot/config.txt
-#   sudo grep -qxF 'gpu_mem=128' /boot/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/config.txt
+# Debian release and the PHP version it ships (VERSION=0 when unknown, e.g. "trixie/sid")
+DEBIAN_RAW=$(cat /etc/debian_version 2>/dev/null)
+VERSION=$(echo "$DEBIAN_RAW" | cut -d. -f1)
+case "$VERSION" in
+   ''|*[!0-9]*) VERSION=0 ;;
+esac
+# userland architecture (armhf or arm64), uname -m shows the kernel which is 64-bit on Pi 4 even with 32-bit OS
+ARCH=$(dpkg --print-architecture 2>/dev/null)
+MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+echo "Debian version: $DEBIAN_RAW, architecture: $ARCH, model: $MODEL"
+case "$VERSION" in
+   9)  phpversion=7.0 ;;
+   10) phpversion=7.3 ;;
+   11) phpversion=7.4 ;;
+   12) phpversion=8.2 ;;
+   13) phpversion=8.4 ;;
+   *)  phpversion=$(apt-cache depends php 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+' | head -n 1 | sed 's/^php//')
+       if [ -z "$phpversion" ]; then phpversion=8.2; fi ;;
+esac
+# Bullseye and later: enable the legacy camera with raspi-config (Interface Options > Legacy Camera)
+if [ "$VERSION" -ge 11 ] 2>/dev/null; then
    sudo mkdir -p /opt/vc/bin
-elif [ $VERSION -eq 12 ]; then
-   phpversion=8.2
-#following is done by enable legacy camera in updates raspi-config
-#   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=1/g' /boot/config.txt
-#   sudo grep -qxF 'start_x=1' /boot/config.txt || sudo sed -i '$ a start_x=1' /boot/config.txt
-#   sudo grep -qxF 'gpu_mem=128' /boot/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/config.txt
-   sudo mkdir -p /opt/vc/bin
-else
-   phpversion=7.0
 fi
+
+# Camera daemon: raspimjpeg (legacy MMAL camera stack, Buster or Bullseye with Legacy Camera enabled)
+# or rpicamd (libcamera/Picamera2 for every current Raspberry Pi camera and board, V4L2 for USB webcams
+# and other boards). camerabackend in config.txt can force "raspimjpeg" or "rpicamd".
+fn_select_camera_backend ()
+{
+   backend="$camerabackend"
+   if [ "$backend" != "raspimjpeg" ] && [ "$backend" != "rpicamd" ]; then
+      backend="rpicamd"
+      case "$MODEL" in
+         *"Raspberry Pi"*)
+            if [ "$ARCH" = "armhf" ] && [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 10 ]; then
+               backend="raspimjpeg"
+            elif [ "$ARCH" = "armhf" ] && [ "$VERSION" -eq 11 ] && vcgencmd get_camera 2>/dev/null | grep -q "supported=1"; then
+               backend="raspimjpeg"
+            fi ;;
+      esac
+   fi
+   echo "Camera daemon: $backend"
+}
 
 # Terminal colors
 color_red="tput setaf 1"
@@ -87,6 +108,7 @@ if [ ! -e ./config.txt ]; then
       sudo echo "autostart=\"yes\"" >> ./config.txt
       sudo echo "jpglink=\"no\"" >> ./config.txt
       sudo echo "phpversion=\"$phpversion\"" >> ./config.txt
+      sudo echo "camerabackend=\"auto\"" >> ./config.txt
       sudo echo "" >> ./config.txt
       sudo chmod 664 ./config.txt
 fi
@@ -115,7 +137,7 @@ if [ $# -eq 0 ] || [ "$1" != "q" ]; then
    "User:(blank=nologin)"  5 1   "$user"        5 32 15 0  \
    "Password:"             6 1   "$webpasswd"   6 32 15 0  \
    "jpglink:(yes/no)"      7 1   "$jpglink"     7 32 15 0  \
-   "php:(stretch 7.0,buster 7.3)"           8 1   "$phpversion"  8 32 15 0  \
+   "PHP version:(e.g. 7.4, 8.2)"           8 1   "$phpversion"  8 32 15 0  \
    2>&1 1>&3 | {
       read -r rpicamdir
       read -r autostart
@@ -135,6 +157,7 @@ if [ $# -eq 0 ] || [ "$1" != "q" ]; then
       sudo echo "autostart=\"$autostart\"" >> ./config.txt
       sudo echo "jpglink=\"$jpglink\"" >> ./config.txt
       sudo echo "phpversion=\"$phpversion\"" >> ./config.txt
+      sudo echo "camerabackend=\"${camerabackend:-auto}\"" >> ./config.txt
       sudo echo "" >> ./config.txt
    else
       echo "exit" > ./exitfile.txt
@@ -156,6 +179,79 @@ if [ ! "${rpicamdir:0:1}" == "" ]; then
 else
    rpicamdirEsc=""
 fi
+
+# MP4Box (package gpac) wraps recordings into mp4 files. gpac is not available on every Debian release.
+fn_install_mp4box ()
+{
+   if ! command -v MP4Box >/dev/null 2>&1 && apt-cache show gpac >/dev/null 2>&1; then
+      sudo apt-get install -y gpac
+   fi
+   if ! command -v MP4Box >/dev/null 2>&1; then
+      echo "WARNING: MP4Box (package gpac) is not available. Videos stay raw .h264 files; set 'MP4 boxing' to Off in the settings."
+   fi
+}
+
+# Bullseye ships the MMAL libraries as libmmal_core.so.0 etc., the unversioned names raspimjpeg links to come with libraspberrypi-dev
+fn_install_mmal_libs ()
+{
+   if [ "$VERSION" -eq 11 ] && [ "$ARCH" = "armhf" ] && ! dpkg -s libraspberrypi-dev >/dev/null 2>&1; then
+      sudo apt-get install -y libraspberrypi-dev
+   fi
+}
+
+# rpicamd and the packages it uses, each only when the distribution provides it
+fn_install_rpicamd ()
+{
+   pkgs=""
+   for p in python3-numpy python3-opencv python3-picamera2 python3-pil ffmpeg v4l-utils; do
+      if apt-cache show $p >/dev/null 2>&1; then pkgs="$pkgs $p"; fi
+   done
+   sudo apt-get install -y --no-install-recommends $pkgs
+   sudo mkdir -p /opt/rpicam
+   sudo install -m 755 backend/rpicamd.py /opt/rpicam/rpicamd.py
+   sudo ln -sf /opt/rpicam/rpicamd.py /usr/bin/raspimjpeg
+   for g in video render; do
+      if getent group $g >/dev/null; then sudo usermod -a -G $g www-data; fi
+   done
+}
+
+# checks that the selected camera daemon can run and finds a camera
+fn_post_install_check ()
+{
+   problems=""
+   if [ "$backend" = "rpicamd" ]; then
+      if ! python3 -c "import numpy" >/dev/null 2>&1; then
+         problems="${problems}python3-numpy is missing, rpicamd can not start.\n\n"
+      fi
+      cams=$(python3 -c "from picamera2 import Picamera2; print(len(Picamera2.global_camera_info()))" 2>/dev/null)
+      if [ -z "$cams" ] || [ "$cams" = "0" ]; then
+         if ! ls /dev/v4l/by-id/*video-index0 >/dev/null 2>&1 && [ ! -e /dev/video0 ]; then
+            problems="${problems}No camera found. CSI camera: check the cable (on Bullseye, Legacy Camera must be off for rpicamd). USB webcam: plug it in. Then restart with ./start.sh.\n\n"
+         fi
+      fi
+   fi
+   if [ "$backend" = "raspimjpeg" ]; then
+   missing=$(ldd /opt/vc/bin/raspimjpeg 2>/dev/null | grep "not found" | awk '{print $1}' | tr '\n' ' ')
+   if [ -n "$missing" ]; then
+      problems="${problems}raspimjpeg can not load: ${missing}\n\n"
+   fi
+   fi
+   if [ "$backend" = "raspimjpeg" ] && [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 11 ] && command -v vcgencmd >/dev/null 2>&1; then
+      camera=$(vcgencmd get_camera 2>/dev/null)
+      case "$camera" in
+         *supported=0*)
+            problems="${problems}The legacy camera is not enabled. Bullseye: sudo raspi-config > Interface Options > Legacy Camera. Buster: sudo raspi-config > Interface Options > Camera. Then reboot.\n\n" ;;
+         *detected=0*)
+            problems="${problems}The legacy camera firmware detects no camera. It supports Camera Module v1 (OV5647), v2 (IMX219) and the HQ Camera (IMX477). For Camera Module 3, Global Shutter, AI Camera and other libcamera cameras turn Legacy Camera off in raspi-config, set camerabackend=\"rpicamd\" in config.txt and run ./install.sh again.\n\n" ;;
+      esac
+   fi
+   if [ -n "$problems" ]; then
+      echo -e "WARNING:\n$problems"
+      if [ "$1" != "q" ]; then
+         dialog --title "Camera check" --backtitle "$backtitle" --msgbox "$problems" 18 70
+      fi
+   fi
+}
 
 fn_stop ()
 { # This is function stop
@@ -241,11 +337,7 @@ else
    sed -i "s/auth_basic\ .*/auth_basic \"Restricted\";/g" $aconf
    sed -i "s/#auth_basic_user_file/\ auth_basic_user_file/g" $aconf
 fi
-if [[ "$phpversion" == "7.4" ]]; then
-   sed -i "s/\/var\/run\/php5-fpm\.sock;/\/run\/php\/php7.4-fpm\.sock;/g" $aconf
-elif [[ "$phpversion" == "7.3" ]]; then
-   sed -i "s/\/var\/run\/php5-fpm\.sock;/\/run\/php\/php7.3-fpm\.sock;/g" $aconf
-fi
+sed -i "s:/var/run/php5-fpm\.sock;:/run/php/php${phpversion}-fpm.sock;:g" $aconf
 sudo sed -i -E "s/(listen.+?)80/\1$webport/g" $aconf
 # following line sets root url to direct subfolder. This is inconsistent with other usage.
 #sudo sed -i -E "s/root \/var\/www/root \/var\/www$rpicamdirEsc/" $aconf
@@ -263,16 +355,14 @@ if [ "$NGINX_DISABLE_LOGGING" != "" ]; then
    sudo sed -i "s:access_log /var/log/nginx/nginx/access.log;:access_log /dev/null;:g" /etc/nginx/nginx.conf
 fi
 
-# Configure php-apc
-if [[ "$phpversion" == "7.3" ]]; then
-	phpnv=/etc/php/7.3
-else
-	phpnv=/etc/php/$phpversion
+# php-fpm settings (APCu is configured by the php-apcu package itself)
+phpnv=/etc/php/$phpversion
+if ! sudo grep -q "^cgi.fix_pathinfo = 0" $phpnv/fpm/php.ini 2>/dev/null; then
+   sudo sh -c "echo \"cgi.fix_pathinfo = 0;\" >> $phpnv/fpm/php.ini"
 fi
-sudo sh -c "echo \"cgi.fix_pathinfo = 0;\" >> $phpnv/fpm/php.ini"
-sudo mkdir $phpnv/conf.d >/dev/null 2>&1
-sudo cp etc/php5/apc.ini $phpnv/conf.d/20-apc.ini
-sudo chmod 644 $phpnv/conf.d/20-apc.ini
+# remove the obsolete APC config of older versions, the apc extension does not exist for PHP 7+
+sudo rm -f $phpnv/conf.d/20-apc.ini $phpnv/fpm/conf.d/20-apc.ini
+sudo service php$phpversion-fpm restart >/dev/null 2>&1
 sudo service nginx restart
 }
 
@@ -317,6 +407,10 @@ sudo chmod 664 /etc/motion/motion.conf
 
 fn_autostart ()
 {
+# Bookworm and later do not ship /etc/rc.local, create a valid one (systemd runs it when executable)
+if [ ! -e /etc/rc.local ]; then
+   sudo bash -c 'printf "#!/bin/sh -e\n\nexit 0\n" > /etc/rc.local'
+fi
 tmpfile=$(mktemp)
 sudo sed '/#START/,/#END/d' /etc/rc.local > "$tmpfile" && sudo mv "$tmpfile" /etc/rc.local
 # Remove to growing plank lines.
@@ -363,6 +457,13 @@ if [ ! "$rpicamdir" == "$rpicamdirold" ]; then
 fi
 
 sudo cp -r www/* /var/www$rpicamdir/
+# files of the previous interface which are no longer used
+for oldfile in js/script.js js/pipan.js js/preview.js js/style_minified.js css/style_minified.css css/preview.css \
+   css/es_Default.css css/es_Night.css css/es_Modern.css css/extrastyle.txt loading.jpg updating.jpg unavailable.jpg \
+   image.png video.png timelapse.png delete.png; do
+   sudo rm -f "/var/www$rpicamdir/$oldfile"
+done
+sudo rm -rf "/var/www$rpicamdir/fonts"
 if [ -e /var/www$rpicamdir/index.html ]; then
    sudo rm /var/www$rpicamdir/index.html
 fi
@@ -374,15 +475,15 @@ else
 fi
 
 if [ "$webserver" == "apache" ]; then
-   sudo apt-get install -y apache2 $phpv $phpv-cli libapache2-mod-$phpv gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y apache2 $phpv $phpv-cli libapache2-mod-$phpv motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_apache
 elif [ "$webserver" == "nginx" ]; then
-   sudo apt-get install -y nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_nginx
 elif [ "$webserver" == "lighttpd" ]; then
-   sudo apt-get install -y  lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y  lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_lighttpd
 fi
@@ -429,10 +530,22 @@ sudo chown -R www-data:www-data /var/www$rpicamdir
 sudo cp etc/sudoers.d/RPI_Cam_Web_Interface /etc/sudoers.d/
 sudo chmod 440 /etc/sudoers.d/RPI_Cam_Web_Interface
 
-sudo cp -r bin/raspimjpeg /opt/vc/bin/
-sudo chmod 755 /opt/vc/bin/raspimjpeg
-if [ ! -e /usr/bin/raspimjpeg ]; then
-   sudo ln -s /opt/vc/bin/raspimjpeg /usr/bin/raspimjpeg
+fn_select_camera_backend
+if [ "$backend" = "raspimjpeg" ]; then
+   fn_install_mp4box
+   fn_install_mmal_libs
+   # Stretch has glibc 2.24, the current raspimjpeg build needs 2.28
+   raspimjpegbin=bin/raspimjpeg
+   if [ "$VERSION" -eq 9 ]; then
+      raspimjpegbin=bin/raspimjpeg-stretch
+   fi
+   sudo mkdir -p /opt/vc/bin
+   sudo cp $raspimjpegbin /opt/vc/bin/raspimjpeg
+   sudo chmod 755 /opt/vc/bin/raspimjpeg
+   sudo ln -sf /opt/vc/bin/raspimjpeg /usr/bin/raspimjpeg
+   sudo rm -f /dev/shm/mjpeg/camera_info.json
+else
+   fn_install_rpicamd
 fi
 
 sed -e "s/www/www$rpicamdirEsc/" etc/raspimjpeg/raspimjpeg.1 > etc/raspimjpeg/raspimjpeg
@@ -465,9 +578,10 @@ if [ -e /var/www$rpicamdir/schedule.php ]; then
    sudo rm /var/www$rpicamdir/schedule.php
 fi
 
-sudo sed -e "s/www/www$rpicamdirEsc/g" www/schedule.php > www/schedule.php.1
-sudo mv www/schedule.php.1 /var/www$rpicamdir/schedule.php
+sudo cp www/schedule.php /var/www$rpicamdir/schedule.php
 sudo chown www-data:www-data /var/www$rpicamdir/schedule.php
+
+fn_post_install_check "$1"
 
 if [ $# -eq 0 ] || [ "$1" != "q" ]; then
    fn_reboot

@@ -13,3 +13,6 @@ etc/nginx/sites-available/default
 
 # settings
 etc/raspimjpeg/raspimjpeg
+
+# Python
+__pycache__/

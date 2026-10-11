@@ -1,20 +1,22 @@
 <?php
+  // returns the most recent time lapse image
   define('BASE_DIR', dirname(__FILE__));
   header("Access-Control-Allow-Origin: *");
   $files = scandir(BASE_DIR.'/media', SCANDIR_SORT_DESCENDING);
-  $found = 0;
-  for($i = 0; $i < count(files); $i++) {
-	$newest_file = $files[$i];
-	if(substr($newest_file,0,2) == "tl") {
-		$found = 1;
+  $newest_file = "";
+  foreach ($files as $file) {
+	if(substr($file,0,2) == "tl" && substr($file, -7) != ".th.jpg" && strcasecmp(substr($file, -4), ".jpg") == 0) {
+		$newest_file = $file;
 		break;
 	}
   }
-  if($found) {
+  if($newest_file != "") {
 	header("Content-Type: image/jpeg");
-	readfile("media/$newest_file");
+	header("Cache-Control: no-store");
+	readfile(BASE_DIR . "/media/$newest_file");
   } else {
-	header("Content-Type: image/txt");
-	return("Not found");  
+	http_response_code(404);
+	header("Content-Type: text/plain");
+	echo "Not found";
   }
 ?>
