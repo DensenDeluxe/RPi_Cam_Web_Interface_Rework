@@ -1,18 +1,29 @@
-.*.swp      # Vim Files
-*~          # backup files
-
-# Generated text files
-install.txt
-config.txt
-install.txt
-start.txt
-update.txt
-
-# website config
-etc/nginx/sites-available/default
-
-# settings
-etc/raspimjpeg/raspimjpeg
-
 # Python
 __pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / frontend
+node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+
+# Built UI (produced by `make web`, shipped in release tarballs)
+src/pinhole/web/*
+!src/pinhole/web/.gitkeep
+
+# Local runtime data
+.pinhole-data/
+bin/mediamtx
+*.log
+.DS_Store

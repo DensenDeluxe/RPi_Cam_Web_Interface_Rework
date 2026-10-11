@@ -1,0 +1,94 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pinhole"
+description = "The modern camera app for Raspberry Pi: live view, recording, timelapse, motion detection and scheduling."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pinhole contributors" }]
+requires-python = ">=3.11"
+dynamic = ["version"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: FastAPI",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Video :: Capture",
+]
+# numpy, av (PyAV), Pillow, simplejpeg and picamera2 come from the distribution
+# (apt) on Raspberry Pi OS because they are tied to libcamera and the system
+# FFmpeg. The installer creates the virtualenv with --system-site-packages.
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+media = ["numpy>=1.24", "av>=10", "pillow>=9.4"]
+fast = ["uvloop>=0.19; platform_machine == 'aarch64' or platform_machine == 'x86_64'", "httptools>=0.6; platform_machine == 'aarch64' or platform_machine == 'x86_64'"]
+mqtt = ["aiomqtt>=2.0"]
+dev = [
+  "pinhole[media,mqtt]",
+  "simplejpeg>=1.7",
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]
+
+[project.scripts]
+pinhole = "pinhole.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/DensenDeluxe/pinhole"
+Issues = "https://github.com/DensenDeluxe/pinhole/issues"
+
+[tool.hatch.version]
+path = "src/pinhole/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pinhole"]
+artifacts = ["src/pinhole/web/**"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF", "S", "PTH", "C4", "PIE", "RET"]
+ignore = [
+  "S101",   # assert is fine in tests
+  "S104",   # binding to 0.0.0.0 is intended (LAN device)
+  "S603",   # subprocess calls use argument lists
+  "S607",   # system tools are resolved via PATH on purpose
+  "RUF012",
+  "PTH123", # open() is fine
+  "SIM105",
+  "RET504",
+  "B008",   # FastAPI Depends() in defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PTH", "B011"]
+
+[tool.mypy]
+python_version = "3.11"
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+check_untyped_defs = true
+files = ["src/pinhole"]
+exclude = ["src/pinhole/web/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning:av.*"]
