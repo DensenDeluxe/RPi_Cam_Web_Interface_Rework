@@ -6,22 +6,30 @@ server {
 	index index.php index.html index.htm;
 	server_name localhost;
 
+	# basic authentication (configured by install.sh) protects pages and media files
+	auth_basic "Off";
+	#auth_basic_user_file /usr/local/.htpasswd;
+
 	location / {
 		try_files $uri $uri/ /index.html;
 	}
-    location ~ [^/]\.php(/|$) {
-            fastcgi_split_path_info ^(.+?\.php)(/.*)$;
-            if (!-f $document_root$fastcgi_script_name) {
-                    return 404;
-            }
-            fastcgi_pass unix:/var/run/php5-fpm.sock;
-            fastcgi_index index.php;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $document_root/$fastcgi_script_name;
-			fastcgi_param REMOTE_USER $remote_user;
-            auth_basic "Off";
-            #auth_basic_user_file /usr/local/.htpasswd;
-            }
+	# configuration, log and FIFO files of the camera software must not be downloadable
+	location ~ /(uconfig|userLevel|raspimjpeg|schedule\.json|scheduleBackup\.json|motionPars\.json|multiview\.json|[A-Za-z]*Log\.txt|FIFO[0-9]*)$ {
+		deny all;
+	}
+	location ~ [^/]\.php(/|$) {
+		fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+		if (!-f $document_root$fastcgi_script_name) {
+			return 404;
+		}
+		fastcgi_pass unix:/var/run/php5-fpm.sock;
+		fastcgi_index index.php;
+		include fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME $document_root/$fastcgi_script_name;
+		fastcgi_param REMOTE_USER $remote_user;
+		# streams (cam_pic_new.php) must not be buffered
+		fastcgi_buffering off;
+	}
 	location ~ /\.ht {
 		deny all;
 	}

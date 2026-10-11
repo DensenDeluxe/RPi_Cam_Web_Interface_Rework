@@ -1,38 +1,35 @@
 <!DOCTYPE html>
-<html>
-	<head>
-		<title>RPi Cam Multiview</title>
-		<script language="javascript">
-			var mjpeg_img0,mjpeg_img1,mjpeg_img2;
-	 
-			function load_img0() {mjpeg_img0.src = "multiview.php?time=" + new Date().getTime() + "&pHost=0";}
-			function load_img1() {mjpeg_img1.src = "multiview.php?time=" + new Date().getTime() + "&pHost=1";}
-			function load_img2() {mjpeg_img2.src = "multiview.php?time=" + new Date().getTime() + "&pHost=2";}
-			function load_img3() {mjpeg_img3.src = "multiview.php?time=" + new Date().getTime() + "&pHost=3";}
-			function init() {
-				mjpeg_img0 = document.getElementById("mjpeg_dest0");
-				if(mjpeg_img0) mjpeg_img0.onload = load_img0();
-				mjpeg_img1 = document.getElementById("mjpeg_dest1");
-				if(mjpeg_img1) mjpeg_img1.onload = load_img1();
-				mjpeg_img2 = document.getElementById("mjpeg_dest2");
-				if(mjpeg_img2) mjpeg_img2.onload = load_img2();
-				mjpeg_img3 = document.getElementById("mjpeg_dest3");
-				if(mjpeg_img3) mjpeg_img3.onload = load_img3();
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>RPi Cam Multiview</title>
+	<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+	<style>
+		/* Shows up to four cameras configured in multiview.json (copy multiview.jsonD to start) */
+		html, body { margin: 0; height: 100%; background: #0a0c0f; color: #e8ebf0; font: 14px/1.4 system-ui, sans-serif; }
+		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); gap: 6px; padding: 6px; min-height: 100%; box-sizing: border-box; }
+		a { position: relative; display: block; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; }
+		img { width: 100%; height: 100%; object-fit: contain; display: block; }
+		span { position: absolute; left: 10px; top: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.55); font-weight: 600; }
+	</style>
+</head>
+<body>
+	<div class="grid" id="grid"></div>
+	<script>
+		(function () {
+			var grid = document.getElementById('grid');
+			for (var i = 0; i < 4; i++) {
+				var a = document.createElement('a');
+				a.href = 'multiview.php?rHost=' + i;
+				a.innerHTML = '<img alt=""><span>Cam ' + (i + 1) + '</span>';
+				grid.appendChild(a);
+				(function (img, a, i) {
+					img.onerror = function () { a.hidden = true; };
+					img.src = 'multiview.php?time=' + Date.now() + '&pHost=' + i;
+				})(a.firstChild, a, i);
 			}
-		</script>
-	</head>
-	<body onload="setTimeout('init();', 100);">
-		<a href="multiview.php?rHost=0">
-			<img id="mjpeg_dest0"  style="width: 49%"/>
-		</a>
-		<a href="multiview.php?rHost=1">
-			<img id="mjpeg_dest1"  style="width: 49%"/>
-		</a>
-		<a href="multiview.php?rHost=2">
-			<img id="mjpeg_dest2"  style="width: 49%"/>
-		</a>
-		<a href="multiview.php?rHost=3">
-			<img id="mjpeg_dest3"  style="width: 49%"/>
-		</a>
-	</body>
+		})();
+	</script>
+</body>
 </html>

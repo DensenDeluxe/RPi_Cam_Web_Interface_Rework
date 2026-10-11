@@ -5,20 +5,25 @@
 
 define('BASE_DIR', dirname(__FILE__));
 require_once(BASE_DIR.'/config.php');
-$multi = json_decode(file_get_contents("multiview.json"), true);
+$multi = @json_decode(@file_get_contents(BASE_DIR . "/multiview.json"), true);
+if (!is_array($multi) || empty($multi["hosts"])) {
+	denyRequest(404, "multiview.json not configured (see multiview.jsonD)");
+}
+
+function hostIndex($param, $multi) {
+	$i = isset($_GET[$param]) ? (int)$_GET[$param] : 0;
+	if (!array_key_exists($i, $multi["hosts"])) denyRequest(404, "Unknown host");
+	return $i;
+}
 
 if (isset($_GET["rHost"])) {
-		$hostI = $_GET["rHost"];
-		$host = $multi["hosts"][$hostI];
-		header('Location: '.$host);
-	} else {
-	if (isset($_GET["pHost"])) {
-		$hostI = $_GET["pHost"];
-	} else {
-		$hostI = 0;
-	}
+	$host = $multi["hosts"][hostIndex("rHost", $multi)];
+	header('Location: '.$host);
+} else {
+	$hostI = hostIndex("pHost", $multi);
 	$host = $multi["hosts"][$hostI];
-	$preview_delay = $multi["delays"][$hostI];
+	$preview_delay = isset($multi["delays"][$hostI]) ? (int)$multi["delays"][$hostI] : 40000;
+	$preview_delay = max(10000, $preview_delay);
 
 	//writeLog("mjpeg stream with $preview_delay delay");
 
@@ -31,27 +36,22 @@ if (isset($_GET["rHost"])) {
 	header ("Pragma: no-cache");
 	header ("Connection: close");
 
-	ob_flush();		//Push out the content we already have (gets the headers to the browser as quickly as possible)
+	while (ob_get_level() > 0) ob_end_flush();
+	flush();		//Push out the content we already have (gets the headers to the browser as quickly as possible)
 
 	set_time_limit(0); // Set this so PHP doesn't timeout during a long stream
 
-	while(true) {
-		ob_start();
-		
-		echo "--$boundary\r\n";
-		echo "Content-type: image/jpeg\r\n";
-		
-		$fileContents = file_get_contents($host . 'cam_get.php');
-		$fileLength = strlen($fileContents);
-		
-		echo "Content-Length:" . $fileLength . "\r\n";
-		echo "\r\n";
-		
-		echo $fileContents;
-		
-		echo "\r\n";
-		ob_end_flush();
-		
+	while(!connection_aborted()) {
+		$fileContents = @file_get_contents($host . 'cam_get.php');
+		if ($fileContents !== false && $fileContents !== '') {
+			echo "--$boundary\r\n";
+			echo "Content-type: image/jpeg\r\n";
+			echo "Content-Length:" . strlen($fileContents) . "\r\n";
+			echo "\r\n";
+			echo $fileContents;
+			echo "\r\n";
+			flush();
+		}
 		usleep($preview_delay);
 	}	
 }

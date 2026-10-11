@@ -42,28 +42,44 @@ if [ $(dpkg-query -W -f='${Status}' "dialog" 2>/dev/null | grep -c "ok installed
   sudo apt-get install -y dialog
 fi
 
-#Legacy support Bullseye
-read -d . VERSION < /etc/debian_version
-echo $VERSION
-if [ $VERSION  -eq 10 ]; then
-   phpversion=7.3
-elif [ $VERSION -eq 11 ]; then
-   phpversion=7.4
-#following is done by enable legacy camera in updates raspi-config
-#   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=1/g' /boot/config.txt
-#   sudo grep -qxF 'start_x=1' /boot/config.txt || sudo sed -i '$ a start_x=1' /boot/config.txt
-#   sudo grep -qxF 'gpu_mem=128' /boot/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/config.txt
+# Debian release and the PHP version it ships
+VERSION=$(cut -d. -f1 /etc/debian_version 2>/dev/null)
+echo "Debian version: $VERSION"
+case "$VERSION" in
+   9)  phpversion=7.0 ;;
+   10) phpversion=7.3 ;;
+   11) phpversion=7.4 ;;
+   12) phpversion=8.2 ;;
+   13) phpversion=8.4 ;;
+   *)  phpversion=$(apt-cache depends php 2>/dev/null | grep -oE 'php[0-9]+\.[0-9]+' | head -n 1 | sed 's/^php//')
+       if [ -z "$phpversion" ]; then phpversion=8.2; fi ;;
+esac
+# Bullseye and later: enable the legacy camera with raspi-config (Interface Options > Legacy Camera)
+if [ "$VERSION" -ge 11 ] 2>/dev/null; then
    sudo mkdir -p /opt/vc/bin
-elif [ $VERSION -eq 12 ]; then
-   phpversion=8.2
-#following is done by enable legacy camera in updates raspi-config
-#   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=1/g' /boot/config.txt
-#   sudo grep -qxF 'start_x=1' /boot/config.txt || sudo sed -i '$ a start_x=1' /boot/config.txt
-#   sudo grep -qxF 'gpu_mem=128' /boot/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/config.txt
-   sudo mkdir -p /opt/vc/bin
-else
-   phpversion=7.0
 fi
+
+# raspimjpeg needs the legacy (MMAL) camera stack of 32-bit Raspberry Pi OS up to Bullseye
+fn_legacy_camera_check ()
+{
+   legacy_warning=""
+   if grep -qs "Raspberry Pi 5" /proc/device-tree/model; then
+      legacy_warning="This is a Raspberry Pi 5. It has no legacy camera stack, so raspimjpeg can not access the camera."
+   elif [ "$VERSION" -ge 12 ] 2>/dev/null; then
+      legacy_warning="Debian $VERSION (Raspberry Pi OS Bookworm or newer) no longer contains the legacy camera stack (MMAL) that raspimjpeg needs. The web interface installs, but the camera will most likely not work. Use Raspberry Pi OS Bullseye (32-bit, Legacy Camera enabled) for a working setup."
+   elif [ "$(uname -m)" = "aarch64" ]; then
+      legacy_warning="This is a 64-bit OS. raspimjpeg is a 32-bit program and the legacy camera libraries are only available on 32-bit Raspberry Pi OS."
+   fi
+   if [ -n "$legacy_warning" ]; then
+      echo "WARNING: $legacy_warning"
+      if [ "$1" != "q" ]; then
+         dialog --title "Camera compatibility" --backtitle "$backtitle" --yes-label "Continue" --no-label "Abort" --yesno "$legacy_warning\n\nContinue anyway?" 14 64
+         if [ $? -ne 0 ]; then
+            exit 1
+         fi
+      fi
+   fi
+}
 
 # Terminal colors
 color_red="tput setaf 1"
@@ -75,6 +91,8 @@ versionfile="./www/config.php"
 version=$(cat $versionfile | grep "'APP_VERSION'" | cut -d "'" -f4)
 backtitle="Copyright (c) 2015, Bob Tidey. RPi Cam $version"
 jpglink="no"
+
+fn_legacy_camera_check "$1"
 
 # Config options located in ./config.txt. In first run script makes that file for you.
 if [ ! -e ./config.txt ]; then
@@ -115,7 +133,7 @@ if [ $# -eq 0 ] || [ "$1" != "q" ]; then
    "User:(blank=nologin)"  5 1   "$user"        5 32 15 0  \
    "Password:"             6 1   "$webpasswd"   6 32 15 0  \
    "jpglink:(yes/no)"      7 1   "$jpglink"     7 32 15 0  \
-   "php:(stretch 7.0,buster 7.3)"           8 1   "$phpversion"  8 32 15 0  \
+   "PHP version:(e.g. 7.4, 8.2)"           8 1   "$phpversion"  8 32 15 0  \
    2>&1 1>&3 | {
       read -r rpicamdir
       read -r autostart
@@ -241,11 +259,7 @@ else
    sed -i "s/auth_basic\ .*/auth_basic \"Restricted\";/g" $aconf
    sed -i "s/#auth_basic_user_file/\ auth_basic_user_file/g" $aconf
 fi
-if [[ "$phpversion" == "7.4" ]]; then
-   sed -i "s/\/var\/run\/php5-fpm\.sock;/\/run\/php\/php7.4-fpm\.sock;/g" $aconf
-elif [[ "$phpversion" == "7.3" ]]; then
-   sed -i "s/\/var\/run\/php5-fpm\.sock;/\/run\/php\/php7.3-fpm\.sock;/g" $aconf
-fi
+sed -i "s:/var/run/php5-fpm\.sock;:/run/php/php${phpversion}-fpm.sock;:g" $aconf
 sudo sed -i -E "s/(listen.+?)80/\1$webport/g" $aconf
 # following line sets root url to direct subfolder. This is inconsistent with other usage.
 #sudo sed -i -E "s/root \/var\/www/root \/var\/www$rpicamdirEsc/" $aconf
@@ -263,16 +277,14 @@ if [ "$NGINX_DISABLE_LOGGING" != "" ]; then
    sudo sed -i "s:access_log /var/log/nginx/nginx/access.log;:access_log /dev/null;:g" /etc/nginx/nginx.conf
 fi
 
-# Configure php-apc
-if [[ "$phpversion" == "7.3" ]]; then
-	phpnv=/etc/php/7.3
-else
-	phpnv=/etc/php/$phpversion
+# php-fpm settings (APCu is configured by the php-apcu package itself)
+phpnv=/etc/php/$phpversion
+if ! sudo grep -q "^cgi.fix_pathinfo = 0" $phpnv/fpm/php.ini 2>/dev/null; then
+   sudo sh -c "echo \"cgi.fix_pathinfo = 0;\" >> $phpnv/fpm/php.ini"
 fi
-sudo sh -c "echo \"cgi.fix_pathinfo = 0;\" >> $phpnv/fpm/php.ini"
-sudo mkdir $phpnv/conf.d >/dev/null 2>&1
-sudo cp etc/php5/apc.ini $phpnv/conf.d/20-apc.ini
-sudo chmod 644 $phpnv/conf.d/20-apc.ini
+# remove the obsolete APC config of older versions, the apc extension does not exist for PHP 7+
+sudo rm -f $phpnv/conf.d/20-apc.ini $phpnv/fpm/conf.d/20-apc.ini
+sudo service php$phpversion-fpm restart >/dev/null 2>&1
 sudo service nginx restart
 }
 
@@ -317,6 +329,10 @@ sudo chmod 664 /etc/motion/motion.conf
 
 fn_autostart ()
 {
+# Bookworm and later do not ship /etc/rc.local, create a valid one (systemd runs it when executable)
+if [ ! -e /etc/rc.local ]; then
+   sudo bash -c 'printf "#!/bin/sh -e\n\nexit 0\n" > /etc/rc.local'
+fi
 tmpfile=$(mktemp)
 sudo sed '/#START/,/#END/d' /etc/rc.local > "$tmpfile" && sudo mv "$tmpfile" /etc/rc.local
 # Remove to growing plank lines.
@@ -363,6 +379,13 @@ if [ ! "$rpicamdir" == "$rpicamdirold" ]; then
 fi
 
 sudo cp -r www/* /var/www$rpicamdir/
+# files of the previous interface which are no longer used
+for oldfile in js/script.js js/pipan.js js/preview.js js/style_minified.js css/style_minified.css css/preview.css \
+   css/es_Default.css css/es_Night.css css/es_Modern.css css/extrastyle.txt loading.jpg updating.jpg unavailable.jpg \
+   image.png video.png timelapse.png delete.png; do
+   sudo rm -f "/var/www$rpicamdir/$oldfile"
+done
+sudo rm -rf "/var/www$rpicamdir/fonts"
 if [ -e /var/www$rpicamdir/index.html ]; then
    sudo rm /var/www$rpicamdir/index.html
 fi
@@ -465,8 +488,7 @@ if [ -e /var/www$rpicamdir/schedule.php ]; then
    sudo rm /var/www$rpicamdir/schedule.php
 fi
 
-sudo sed -e "s/www/www$rpicamdirEsc/g" www/schedule.php > www/schedule.php.1
-sudo mv www/schedule.php.1 /var/www$rpicamdir/schedule.php
+sudo cp www/schedule.php /var/www$rpicamdir/schedule.php
 sudo chown www-data:www-data /var/www$rpicamdir/schedule.php
 
 if [ $# -eq 0 ] || [ "$1" != "q" ]; then

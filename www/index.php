@@ -1,654 +1,471 @@
-<!DOCTYPE html>
 <?php
-   define('BASE_DIR', dirname(__FILE__));
-   require_once(BASE_DIR.'/config.php');
-   $config = array();
-   $debugString = "";
-   $macros = array('error_soft','error_hard','start_img','end_img','start_vid','end_vid','end_box','do_cmd','motion_event','startstop');
-   $options_mm = array('Average' => 'average', 'Spot' => 'spot', 'Backlit' => 'backlit', 'Matrix' => 'matrix');
-   $options_em = array('Off' => 'off', 'Auto' => 'auto', 'Night' => 'night', 'Nightpreview' => 'nightpreview', 'Backlight' => 'backlight', 'Spotlight' => 'spotlight', 'Sports' => 'sports', 'Snow' => 'snow', 'Beach' => 'beach', 'Verylong' => 'verylong', 'Fixedfps' => 'fixedfps');
-   $options_wb = array('Off' => 'off', 'Auto' => 'auto', 'Sun' => 'sun', 'Cloudy' => 'cloudy', 'Shade' => 'shade', 'Tungsten' => 'tungsten', 'Fluorescent' => 'fluorescent', 'Incandescent' => 'incandescent', 'Flash' => 'flash', 'Horizon' => 'horizon', 'Greyworld' => 'greyworld');
-// Remove some options (Colourpoint and colourbalance kill the camera)
-   //$options_ie = array('None' => 'none', 'Negative' => 'negative', 'Solarise' => 'solarise', 'Sketch' => 'sketch', 'Denoise' => 'denoise', 'Emboss' => 'emboss', 'Oilpaint' => 'oilpaint', 'Hatch' => 'hatch', 'Gpen' => 'gpen', 'Pastel' => 'pastel', 'Watercolour' => 'watercolour', 'Film' => 'film', 'Blur' => 'blur', 'Saturation' => 'saturation', 'Colourswap' => 'colourswap', 'Washedout' => 'washedout', 'Posterise' => 'posterise', 'Colourpoint' => 'colourpoint', 'ColourBalance' => 'colourbalance', 'Cartoon' => 'cartoon', 'DeInterlaceDouble' => 'deinterlacedouble', 'DeInterlaceAdv' => 'deinterlaceadv', 'DeInterlaceFast' => 'deinterlacefast');
-   $options_ie = array('None' => 'none', 'Negative' => 'negative', 'Solarise' => 'solarise', 'Sketch' => 'sketch', 'Denoise' => 'denoise', 'Emboss' => 'emboss', 'Oilpaint' => 'oilpaint', 'Hatch' => 'hatch', 'Gpen' => 'gpen', 'Pastel' => 'pastel', 'Watercolour' => 'watercolour', 'Film' => 'film', 'Blur' => 'blur', 'Saturation' => 'saturation', 'Colourswap' => 'colourswap', 'Washedout' => 'washedout', 'Posterise' => 'posterise', 'Cartoon' => 'cartoon');
-   $options_ce_en = array('Disabled' => '0', 'Enabled' => '1');
-   $options_ro = array('No rotate' => '0', 'Rotate_90' => '90', 'Rotate_180' => '180', 'Rotate_270' => '270');
-   $options_fl = array('None' => '0', 'Horizontal' => '1', 'Vertical' => '2', 'Both' => '3');
-   $options_bo = array('Off' => '0', 'Background' => '2');
-   $options_av = array('V2' => '2', 'V3' => '3');
-   $options_at_en = array('Disabled' => '0', 'Enabled' => '1');
-   $options_ac_en = array('Disabled' => '0', 'Enabled' => '1');
-   $options_ab = array('Off' => '0', 'On' => '1');
-   $options_vs = array('Off' => '0', 'On' => '1');
-   $options_rl = array('Off' => '0', 'On' => '1');
-   $options_vp = array('Off' => '0', 'On' => '1');
-   $options_mx = array('Internal' => '0', 'External' => '1', 'Monitor' => '2');
-   $options_mf = array('Off' => '0', 'On' => '1');
-   $options_cn = array('First' => '1', 'Second' => '2');
-   $options_st = array('Off' => '0', 'On' => '1');
-   $options_hp = array('Off' => '0', 'On' => '1');
-   
-   function initCamPos() {
-      $tr = fopen("pipan_bak.txt", "r");
-      if($tr){
-         while(($line = fgets($tr)) != false) {
-           $vals = explode(" ", $line);
-           echo '<script type="text/javascript">init_pt(',$vals[0],',',$vals[1],');</script>';
-         }
-         fclose($tr);
-      }
-   }
+	define('BASE_DIR', dirname(__FILE__));
+	require_once(BASE_DIR . '/config.php');
+	require_once(BASE_DIR . '/ui.php');
 
-   function user_buttons() {
-      $buttonString = "";
-	  $buttonCount = 0;
-      if (file_exists("userbuttons")) {
-		$lines = array();
-		$data = file_get_contents("userbuttons");
-		$lines = explode("\n", $data);
-		foreach($lines as $line) {
-			if (strlen($line) && (substr($line, 0, 1) != '#') && $buttonCount < 12) {
-				$index = explode(",",$line);
-				if ($index !== false) {
-					$buttonName = $index[0];
-					$macroName = $index[1];
-					$className = $index[2];
-					if ($className == false) {
-						$className = "btn btn-primary";
+	$macros = array('error_soft','error_hard','start_img','end_img','start_vid','end_vid','end_box','do_cmd','motion_event','startstop');
+	$options_mm = array('Average' => 'average', 'Spot' => 'spot', 'Backlit' => 'backlit', 'Matrix' => 'matrix');
+	$options_em = array('Off' => 'off', 'Auto' => 'auto', 'Night' => 'night', 'Nightpreview' => 'nightpreview', 'Backlight' => 'backlight', 'Spotlight' => 'spotlight', 'Sports' => 'sports', 'Snow' => 'snow', 'Beach' => 'beach', 'Verylong' => 'verylong', 'Fixedfps' => 'fixedfps');
+	$options_wb = array('Off' => 'off', 'Auto' => 'auto', 'Sun' => 'sun', 'Cloudy' => 'cloudy', 'Shade' => 'shade', 'Tungsten' => 'tungsten', 'Fluorescent' => 'fluorescent', 'Incandescent' => 'incandescent', 'Flash' => 'flash', 'Horizon' => 'horizon', 'Greyworld' => 'greyworld');
+	// Colourpoint and colourbalance are left out because they kill the camera
+	$options_ie = array('None' => 'none', 'Negative' => 'negative', 'Solarise' => 'solarise', 'Sketch' => 'sketch', 'Denoise' => 'denoise', 'Emboss' => 'emboss', 'Oilpaint' => 'oilpaint', 'Hatch' => 'hatch', 'Gpen' => 'gpen', 'Pastel' => 'pastel', 'Watercolour' => 'watercolour', 'Film' => 'film', 'Blur' => 'blur', 'Saturation' => 'saturation', 'Colourswap' => 'colourswap', 'Washedout' => 'washedout', 'Posterise' => 'posterise', 'Cartoon' => 'cartoon');
+	$options_ro = array('0°' => '0', '90°' => '90', '180°' => '180', '270°' => '270');
+	$options_fl = array(t('opt.none') => '0', t('opt.horizontal') => '1', t('opt.vertical') => '2', t('opt.both') => '3');
+	$options_bo = array(t('off') => '0', t('opt.background') => '2');
+	$options_mx = array(t('opt.internal') => '0', t('opt.external') => '1', t('opt.monitor') => '2');
+	$options_cn = array(t('opt.first') => '1', t('opt.second') => '2');
+
+	$userLevel = currentUserLevel();
+	$user = getUser();
+	if ($user !== '') writeLog("Logged in user:" . $user . ": UserLevel " . $userLevel);
+
+	$isAdmin = $userLevel >= (int)USERLEVEL_MAX;
+	$canCapture = $userLevel >= (int)USERLEVEL_MEDIUM;
+	$mjpegMode = isset($_COOKIE['stream_mode']) && $_COOKIE['stream_mode'] == 'MJPEG-Stream';
+
+	// current value of a setting as shown in the form
+	function settingValue($key) {
+		switch ($key) {
+			case 'flip':
+				return ((cfg('vflip') == 1 ? 2 : 0) + (cfg('hflip') == 1 ? 1 : 0));
+			case 'MP4Box':
+				$v = cfg('MP4Box');
+				return ($v === 'background') ? 2 : (int)$v;
+			case 'tl_interval':
+				return cfg('tl_interval', 30) / 10;
+			case 'watchdog_interval':
+				return cfg('watchdog_interval', 0) / 10;
+			default:
+				return cfg($key);
+		}
+	}
+
+	function controlAttrs($def) {
+		$a = ' id="' . h($def['id']) . '"';
+		if (isset($def['cmd'])) $a .= ' data-cmd="' . h($def['cmd']) . '" data-label="' . h(t($def['label'])) . '"';
+		foreach (array('min', 'max', 'step', 'maxlength') as $k) {
+			if (isset($def[$k])) $a .= ' ' . $k . '="' . h($def[$k]) . '"';
+		}
+		if (isset($def['scale'])) $a .= ' data-scale="' . h($def['scale']) . '"';
+		if (isset($def['after'])) $a .= ' data-after="' . h($def['after']) . '"';
+		if (!empty($def['recordingLock'])) $a .= ' data-recording-lock';
+		return $a;
+	}
+
+	function renderControl($def, $small = false) {
+		$key = isset($def['key']) ? $def['key'] : $def['id'];
+		$value = settingValue($key);
+		$attrs = controlAttrs($def);
+		$cls = $small ? ' input-sm' : '';
+		switch ($def['type']) {
+			case 'range':
+				echo '<div class="range"><input type="range"' . $attrs . ' value="' . h($value) . '"><output for="' . h($def['id']) . '">' . h($value) . '</output></div>';
+				break;
+			case 'number':
+				echo '<input class="input' . $cls . '" type="number" inputmode="decimal"' . $attrs . ' value="' . h($value) . '">';
+				break;
+			case 'text':
+				echo '<input class="input' . $cls . '" type="text" autocomplete="off"' . $attrs . ' value="' . h($value) . '">';
+				break;
+			case 'toggle':
+				echo '<label class="switch"><input type="checkbox"' . $attrs . ($value == 1 ? ' checked' : '') . '><span class="track"></span><span class="sr-only">' . h(t($def['label'])) . '</span></label>';
+				break;
+			case 'select':
+				echo '<select class="select' . $cls . '"' . $attrs . '>';
+				foreach ($def['options'] as $name => $optValue) {
+					$sel = ((string)$value === (string)$optValue) ? ' selected' : '';
+					echo '<option value="' . h($optValue) . '"' . $sel . '>' . h($name) . '</option>';
+				}
+				echo '</select>';
+				break;
+		}
+	}
+
+	function field($def) {
+		$wide = !empty($def['wide']) ? ' wide' : '';
+		echo '<div class="field' . $wide . '">';
+		echo '<label class="field-label" for="' . h($def['id']) . '">' . h(t($def['label'])) . icon('check', 'applied-mark') . '</label>';
+		echo '<div class="field-control">';
+		renderControl($def);
+		if (isset($def['extra'])) echo $def['extra'];
+		if (isset($def['default'])) {
+			echo '<button type="button" class="btn btn-ghost btn-sm btn-icon" data-default-for="' . h($def['id']) . '" data-default="' . h($def['default']) . '" title="' . h(t('default_is', array('v' => $def['default']))) . '" aria-label="' . h(t('default_is', array('v' => $def['default']))) . '">' . icon('rotate-ccw') . '</button>';
+		}
+		echo '</div>';
+		if (isset($def['hint'])) echo '<div class="field-hint">' . h(t($def['hint'])) . '</div>';
+		echo '</div>';
+	}
+
+	// several values sent together as one command
+	function group($cmd, $label, $fields, $hint = null, $extra = '') {
+		$ids = array();
+		foreach ($fields as $f) $ids[] = $f['id'];
+		echo '<div class="field-group" data-group-cmd="' . h($cmd) . '" data-fields="' . h(implode(' ', $ids)) . '" data-label="' . h(t($label)) . '">';
+		echo '<div class="field-label">' . h(t($label)) . icon('check', 'applied-mark') . '</div>';
+		if ($hint) echo '<div class="field-hint">' . h(t($hint)) . '</div>';
+		echo '<div class="mini-grid">';
+		foreach ($fields as $f) {
+			if ($f['type'] == 'toggle') {
+				echo '<div class="mini-toggle"><span>' . h(t($f['label'])) . '</span>';
+				renderControl($f, true);
+				echo '</div>';
+			} else {
+				echo '<label for="' . h($f['id']) . '">' . h(t($f['label']));
+				renderControl($f, true);
+				echo '</label>';
+			}
+		}
+		echo '</div>';
+		echo '<div class="group-actions">' . $extra . '<button type="button" class="btn btn-soft btn-sm" data-apply>' . icon('check') . h(t('btn.apply')) . '</button></div>';
+		echo '</div>';
+	}
+
+	// custom annotation colours are stored as Y U V, the form uses a colour picker
+	function yuvToHex($y, $u, $v) {
+		$y = (float)$y; $u = (float)$u - 128; $v = (float)$v - 128;
+		$rgb = array($y + 1.402 * $v, $y - 0.344136 * $u - 0.714136 * $v, $y + 1.772 * $u);
+		$hex = '#';
+		foreach ($rgb as $c) $hex .= sprintf('%02x', max(0, min(255, (int)round($c))));
+		return $hex;
+	}
+
+	function colourGroup($cmd, $label, $prefix) {
+		$hex = yuvToHex(cfg($prefix . '_Y', 255), cfg($prefix . '_U', 128), cfg($prefix . '_V', 128));
+		echo '<div class="field-group" data-group-cmd="' . h($cmd) . '" data-fields="' . h($cmd) . '_en ' . h($cmd) . '_colour" data-label="' . h(t($label)) . '">';
+		echo '<div class="field-label">' . h(t($label)) . icon('check', 'applied-mark') . '</div>';
+		echo '<div class="row" style="justify-content:space-between;margin-top:8px">';
+		echo '<label class="switch"><input type="checkbox" id="' . h($cmd) . '_en"' . (cfg($prefix . '_colour') == 1 ? ' checked' : '') . '><span class="track"></span><span>' . h(t('s.colour_enabled')) . '</span></label>';
+		echo '<span class="row"><input class="input" type="color" id="' . h($cmd) . '_colour" data-yuv value="' . h($hex) . '" aria-label="' . h(t($label)) . '">';
+		echo '<button type="button" class="btn btn-soft btn-sm" data-apply>' . icon('check') . h(t('btn.apply')) . '</button></span>';
+		echo '</div></div>';
+	}
+
+	function presetOptions() {
+		echo '<option value="">' . h(t('s.preset_choose')) . '</option>';
+		if (file_exists(BASE_DIR . '/uPresets.html')) {
+			// user supplied list of <option value="w h fps boxfps iw ih [divider]">
+			$data = file_get_contents(BASE_DIR . '/uPresets.html');
+			if (preg_match_all('/<option[^>]*value=["\']([^"\']*)["\'][^>]*>(.*?)<\/option>/is', $data, $m, PREG_SET_ORDER)) {
+				foreach ($m as $i => $opt) {
+					if ($i == 0 && stripos($opt[2], 'select') !== false) continue;
+					echo '<option value="' . h($opt[1]) . '">' . h(strip_tags($opt[2])) . '</option>';
+				}
+			}
+		} else {
+			$presets = array(
+				'1920 1080 25 25 2592 1944 1' => 'Full HD 1080p 16:9',
+				'1280 0720 25 25 2592 1944 1' => 'HD-ready 720p 16:9',
+				'1296 972 25 25 2592 1944 1' => 'Max View 972p 4:3',
+				'768 576 25 25 2592 1944 1' => 'SD TV 576p 4:3',
+				'1920 1080 01 30 2592 1944 1' => 'Full HD Timelapse (x30) 1080p 16:9',
+			);
+			foreach ($presets as $v => $name) echo '<option value="' . h($v) . '">' . h($name) . '</option>';
+		}
+	}
+
+	function userButtons() {
+		$buttons = array();
+		if (file_exists(BASE_DIR . '/userbuttons')) {
+			foreach (explode("\n", file_get_contents(BASE_DIR . '/userbuttons')) as $line) {
+				if (strlen(trim($line)) && substr($line, 0, 1) != '#' && count($buttons) < 12) {
+					$f = explode(',', $line, 4);
+					if (count($f) > 1) {
+						$cls = isset($f[2]) ? $f[2] : '';
+						$style = 'btn-soft';
+						if (strpos($cls, 'danger') !== false) $style = 'btn-soft-danger';
+						else if (strpos($cls, 'primary') !== false) $style = 'btn-primary';
+						$buttons[] = array('name' => trim($f[0]), 'macro' => trim($f[1]), 'style' => $style, 'attrs' => isset($f[3]) ? trim($f[3]) : '');
 					}
-					if (count($index) > 3) {
-						$otherAtt  = $index[3];
-					} else {
-						$otherAtt  = "";
-					}
-					$buttonString .= '<input id="' . $buttonName . '" type="button" value="' . $buttonName . '" onclick="send_cmd(' . "'sy " . $macroName . "'" . ')" class="' . $className . '" ' . $otherAtt . '>' . "\r\n";
-					$buttonCount += 1;
 				}
 			}
 		}
-      }
-	  if (strlen($buttonString)) {
-		  echo '<div class="container-fluid text-center">' . $buttonString . "</div>\r\n";
-	  }
-   }
+		return $buttons;
+	}
 
-   function pan_controls() {
-      $mode = 0;
-      if (file_exists("pipan_on")){
-         initCamPos();
-         $mode = 1;
-      } else if (file_exists("servo_on")){
-         $mode = 2;
-      }
-      if ($mode <> 0) {
-         echo '<script type="text/javascript">set_panmode(',$mode,');</script>';
-         echo "<div class='container-fluid text-center liveimage'>";
-         echo "<div alt='Up' id='arrowUp' style='margin-bottom: 2px;width: 0;height: 0;border-left: 20px solid transparent;border-right: 20px solid transparent;border-bottom: 40px solid #428bca;font-size: 0;line-height: 0;vertical-align: middle;margin-left: auto; margin-right: auto;' onclick='servo_up();'></div>";
-         echo "<div>";
-         echo "<div alt='Left' id='arrowLeft' style='margin-right: 22px;display: inline-block;height: 0;border-top: 20px solid transparent;border-bottom: 20px solid transparent;border-right: 40px solid #428bca;font-size: 0;line-height: 0;vertical-align: middle;' onclick='servo_left();'></div>";
-         echo "<div alt='Right' id='arrowRight' style='margin-left: 22px;display: inline-block;height: 0;border-top: 20px solid transparent;border-bottom: 20px solid transparent;border-left: 40px solid #428bca;font-size: 0;line-height: 0;vertical-align: middle;' onclick='servo_right();'></div>";
-         echo "</div>";
-         echo "<div alt='Down' id='arrowDown' style='margin-top: 2px;width: 0;height: 0;border-left: 20px solid transparent;border-right: 20px solid transparent;border-top: 40px solid #428bca;font-size: 0;line-height: 0;vertical-align: middle;margin-left: auto; margin-right: auto;' onclick='servo_down();'></div>";
-         echo "</div>";
-      }
-   }
-  
-   function pilight_controls() {
-      echo "<tr>";
-        echo "<td>Pi-Light:</td>";
-        echo "<td>";
-          echo "R: <input type='text' size=4 id='pilight_r' value='255'>";
-          echo "G: <input type='text' size=4 id='pilight_g' value='255'>";
-          echo "B: <input type='text' size=4 id='pilight_b' value='255'><br>";
-          echo "<input type='button' value='ON/OFF' onclick='led_switch();'>";
-        echo "</td>";
-      echo "</tr>";
-   }
-
-   function getExtraStyles() {
-      $files = scandir('css');
-      foreach($files as $file) {
-         if(substr($file,0,3) == 'es_') {
-            echo "<option value='$file'>" . substr($file,3, -4) . '</option>';
-         }
-      }
-   }
-   
-  
-   function makeOptions($options, $selKey) {
-      global $config;
-      switch ($selKey) {
-         case 'flip': 
-            $cvalue = (($config['vflip'] == 'true') || ($config['vflip'] == 1) ? 2:0);
-            $cvalue += (($config['hflip'] == 'true') || ($config['hflip'] == 1) ? 1:0);
-            break;
-         case 'MP4Box': 
-            $cvalue = $config[$selKey];
-            if ($cvalue == 'background') $cvalue = 2;
-            break;
-         default: $cvalue = $config[$selKey]; break;
-      }
-      if ($cvalue == 'false') $cvalue = 0;
-      else if ($cvalue == 'true') $cvalue = 1;
-      foreach($options as $name => $value) {
-         if ($cvalue != $value) {
-            $selected = '';
-         } else {
-            $selected = ' selected';
-         }
-         echo "<option value='$value'$selected>$name</option>";
-      }
-   }
-
-   function makeInput($id, $size, $selKey='', $type='text') {
-      global $config, $debugString;
-      if ($selKey == '') $selKey = $id;
-      switch ($selKey) {
-         case 'tl_interval': 
-            if (array_key_exists($selKey, $config)) {
-               $value = $config[$selKey] / 10;
-            } else {
-               $value = 3;
-            }
-            break;
-         case 'watchdog_interval':
-            if (array_key_exists($selKey, $config)) {
-               $value = $config[$selKey] / 10;
-            } else {
-               $value = 0;
-            }
-            break;
-         default: $value = $config[$selKey]; break;
-      }
-      echo "<input type='{$type}' size=$size id='$id' value='$value' style='width:{$size}em;'>";
-   }
-   
-   function macroUpdates() {
-      global $config, $debugString, $macros;
-	  $m = 0;
-	  $mTable = '';
-	  foreach($macros as $macro) {
-		  $value = $config[$macro];
-		  if(substr($value,0,1) == '-') {
-			  $checked = '';
-			  $value = substr($value,1);
-		  } else {
-			  $checked = 'checked';
-		  }
-		  $mTable .= "<TR><TD>Macro:$macro</TD><TD><input type='text' size=16 id='$macro' value='$value'>\r\n";
-		  $mTable .= "<input type='checkbox' $checked id='$macro" . "_chk'>\r\n";
-		  $mTable .= "<input type='button' value='OK' onclick=" . '"send_macroUpdate' . "($m,'$macro')\r\n" . ';"></TD></TR>';
-		  $m++;
-	  }
-      echo $mTable;
-   }
-
-   function getImgWidth() {
-      global $config;
-      if($config['vector_preview'])
-         return 'style="width:' . $config['width'] . 'px;"';
-      else
-         return '';
-   }
-   
-   function getLoadClass() {
-      global $config;
-      if(array_key_exists('fullscreen', $config) && $config['fullscreen'] == 1)
-         return 'class="fullscreen" ';
-      else
-         return '';
-   }
-
-   function simple_button() {
-	   global $toggleButton, $userLevel;
-	   if ($toggleButton != "Off" && $userLevel > USERLEVEL_MIN) {
-		  echo '<input id="toggle_display" type="button" class="btn btn-primary" value="' . $toggleButton . '" style="position:absolute;top:60px;right:10px;" onclick="set_display(this.value);">';
-	   }
-   }
-
-   if (isset($_POST['extrastyle'])) {
-	  $extra = $_POST['extrastyle'];
-      if ((strpos($extra, '/') === false) && file_exists('css/' . $extra)) {
-		 $fp = fopen(BASE_DIR . '/css/extrastyle.txt', "w");
-		 fwrite($fp, $extra);
-		 fclose($fp);
-	  }
-   }
-
-   function getDisplayStyle($context, $userLevel) {
-	    global $Simple;
-	    if ($Simple == 1) {
-			echo 'style="display:none;"';
-		} else {
-			switch($context) {
-				case 'navbar':
-					if ((int)$userLevel < (int)USERLEVEL_MEDIUM)
-						echo 'style="display:none;"';
-					break;
-				case 'preview':
-					if ((int)$userLevel < (int)USERLEVEL_MINP)
-						echo 'style="display:none;"';
-					break;
-				case 'actions':
-					if ((int)$userLevel < (int)USERLEVEL_MEDIUM)
-						echo 'style="display:none;"';
-					break;
-				case 'settings':
-					if ((int)$userLevel != (int)USERLEVEL_MAX)
-						echo 'style="display:none;"';
-					break;
-			}
+	$panMode = 0;
+	$panInit = array(100, 100);
+	if (file_exists(BASE_DIR . '/pipan_on')) {
+		$panMode = 1;
+		if (file_exists(BASE_DIR . '/pipan_bak.txt')) {
+			$vals = explode(' ', trim(file_get_contents(BASE_DIR . '/pipan_bak.txt')));
+			if (count($vals) >= 2) $panInit = array((int)$vals[0], (int)$vals[1]);
 		}
-   }
+	} else if (file_exists(BASE_DIR . '/servo_on')) {
+		$panMode = 2;
+	}
+	$piLight = file_exists(BASE_DIR . '/pilight_on');
+	$buttons = userButtons();
 
-   $toggleButton = "Off";
-   $Simple = 0;
-   $allowSimple = "SimpleOn";
-   if(isset($_COOKIE["display_mode"])) {
-      if($_COOKIE["display_mode"] == "Full") {
-		 $allowSimple = "SimpleOff";
-         $toggleButton = "Simple";
-         $Simple = 2;
-      } else if($_COOKIE["display_mode"] == "Simple") {
-		 $allowSimple = "SimpleOff";
-         $toggleButton = "Full";
-         $Simple = 1;
-      } else {
-		 $allowSimple = "SimpleOn";
-         $toggleButton = "Off";
-         $Simple = 0;
-	  }
-   }
-  
-   $streamButton = "MJPEG-Stream";
-   $mjpegmode = 0;
-   if(isset($_COOKIE["stream_mode"])) {
-      if($_COOKIE["stream_mode"] == "MJPEG-Stream") {
-         $streamButton = "Default-Stream";
-         $mjpegmode = 1;
-      }
-   }
-   $config = readConfig($config, CONFIG_FILE1);
-   $config = readConfig($config, CONFIG_FILE2);
-   $video_fps = $config['video_fps'];
-   $divider = $config['divider'];
-   $user = getUser();
-   writeLog("Logged in user:" . $user . ":");
-   $userLevel =  getUserLevel($user);
-   writeLog("UserLevel " . $userLevel);
-  ?>
+	pageHeader(t('nav.live'), 'live', array('statusPill' => true));
+?>
+<div class="live-layout<?php echo $isAdmin ? ' has-settings' : ''; ?>">
+	<div class="viewer-col">
+		<div class="stage<?php echo $panMode == 1 ? ' pipan' : ''; ?>" id="stage">
+			<img id="mjpeg_dest" alt="<?php et('nav.live'); ?>" draggable="false">
+			<span class="stage-badge" id="recBadge" hidden><span class="dot"></span><span>REC</span></span>
+			<div class="stage-overlay" id="stageOverlay" hidden>
+				<svg class="icon" aria-hidden="true"><use href="img/icons.svg#power"></use></svg>
+				<strong></strong>
+				<p></p>
+<?php if ($isAdmin) { ?>
+				<button type="button" class="btn btn-primary" id="overlayStart" hidden><?php echo icon('play'); ?><span><?php echo h(t('js.act.camera_start')); ?></span></button>
+<?php } ?>
+			</div>
+			<div class="stage-tools">
+				<button type="button" class="icon-btn" id="fullscreenBtn" title="<?php et('live.fullscreen'); ?>" aria-label="<?php et('live.fullscreen'); ?>"><?php echo icon('maximize'); ?></button>
+			</div>
+		</div>
 
-<html>
-   <head>
-      <meta name="viewport" content="width=550, initial-scale=1">
-      <title><?php echo CAM_STRING; ?></title>
-      <link rel="stylesheet" href="css/style_minified.css" />
-      <link rel="stylesheet" href="<?php echo getStyle(); ?>" />
-      <script src="js/style_minified.js"></script>
-      <script src="js/script.js"></script>
-      <script src="js/pipan.js"></script>
-   </head>
-   <body onload="setTimeout('init(<?php echo "$mjpegmode, $video_fps, $divider" ?>);', 100);">
-      <div class="navbar navbar-inverse navbar-fixed-top" role="navigation" <?php getdisplayStyle('navbar', $userLevel); ?>>
-         <div class="container">
-            <div class="navbar-header">
-               <a class="navbar-brand" href="#"><?php echo CAM_STRING; ?></a>
-            </div>
-         </div>
-      </div>
-	  <?php simple_button(); ?>
-      <div class="container-fluid text-center liveimage">
-         <div><img id="mjpeg_dest" <?php echo getLoadClass() . getImgWidth();?>
-		 <?php if(file_exists("pipan_on")) echo "ontouchstart=\"pipan_start()\""; ?> onclick="toggle_fullscreen(this);" src="./loading.jpg"></div>
-         <div id="main-buttons">
-            <input id="video_button" type="button" class="btn btn-primary" <?php getdisplayStyle('actions', $userLevel); ?>>
-            <input id="image_button" type="button" class="btn btn-primary" <?php getdisplayStyle('actions', $userLevel); ?>>
-            <input id="timelapse_button" type="button" class="btn btn-primary" <?php getdisplayStyle('actions', $userLevel); ?>>
-            <input id="md_button" type="button" class="btn btn-primary" <?php getdisplayStyle('settings', $userLevel); ?>>
-            <input id="halt_button" type="button" class="btn btn-danger" <?php getdisplayStyle('settings', $userLevel); ?>>
-         </div>
-      </div>
-      <div id="secondary-buttons" class="container-fluid text-center">
-         <?php pan_controls(); ?>
-         <?php user_buttons(); ?>
-         <a href="preview.php" class="btn btn-default" <?php getdisplayStyle('preview', $userLevel); ?>>Download Videos and Images</a>
-         &nbsp;&nbsp;
-         <?php  if($config['motion_external'] == '1'): ?><a href="motion.php" class="btn btn-default" <?php getdisplayStyle('settings', $userLevel); ?>>Edit motion settings</a>&nbsp;&nbsp;<?php endif; ?>
-         <a href="schedule.php" class="btn btn-default" <?php getdisplayStyle('settings', $userLevel); ?>>Edit schedule settings</a>
-      </div>
-    
-      <div class="container-fluid text-center">
-         <div class="panel-group" id="accordion" <?php getdisplayStyle('settings', $userLevel); ?> >
-            <div class="panel panel-default">
-               <div class="panel-heading">
-                  <h2 class="panel-title">
-                     <a data-toggle="collapse" data-parent="#accordion" href="#collapseOne">Camera Settings</a>
-                  </h2>
-               </div>
-               <div id="collapseOne" class="panel-collapse collapse">
-                  <div class="panel-body">
-                     <table class="settingsTable">
-                        <tr>
-                           <td>Resolutions:</td>
-                           <td>Load Preset: <select onchange="set_preset(this.value)">
-								<?php if(!file_exists('uPresets.html')) : ?>
-                                 <option value="1920 1080 25 25 2592 1944 1">Select option...</option>
-                                 <option value="1920 1080 25 25 2592 1944 1">Full HD 1080p 16:9</option>
-                                 <option value="1280 0720 25 25 2592 1944 1">HD-ready 720p 16:9</option>
-                                 <option value="1296 972 25 25 2592 1944 1">Max View 972p 4:3</option>
-                                 <option value="768 576 25 25 2592 1944 1">SD TV 576p 4:3</option>
-                                 <option value="1920 1080 01 30 2592 1944 1">Full HD Timelapse (x30) 1080p 16:9</option>
-								 <?php else : include 'uPresets.html'; endif; ?>
-                              </select><br>
-                              Custom Values:<br>
-                              Video res: <?php makeInput('video_width', 4, null, 'number'); ?>x<?php makeInput('video_height', 4, null, 'number'); ?>px<br>
-                              Video fps: <?php makeInput('video_fps', 3, null, 'number'); ?>recording, <?php makeInput('MP4Box_fps', 3, null, 'number'); ?>boxing<br>
-                              FPS divider: <?php makeInput('fps_divider', 3, null, 'number'); ?><br>
-                              Image res: <?php makeInput('image_width', 4, null, 'number'); ?>x<?php makeInput('image_height', 4, null, 'number'); ?>px<br>
-                              <input type="button" value="OK" onclick="set_res();">
-                           </td>
-                        </tr>
-                        <?php  if($config['camera_num'] > 0): ?> 
-                        <tr>
-                           <td>Camera select (Compute module only)</td>
-                           <td>
-                              Use camera: <select onchange="send_cmd('cn ' + this.value)"><?php makeOptions($options_cn, 'camera_num'); ?></select>
-                           </td>
-                        </tr>
-                        <?php endif; ?>
-                        <tr>
-                           <td>Timelapse-Interval (0.1...3200):</td>
-                           <td><?php makeInput('tl_interval', 4, null, 'number'); ?>s <input type="button" value="OK" onclick="send_cmd('tv ' + 10 * document.getElementById('tl_interval').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Video Split (seconds, default 0=off):</td>
-                           <td><?php makeInput('video_split', 6, null, 'number'); ?>s <input type="button" value="OK" onclick="send_cmd('vi ' + document.getElementById('video_split').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Annotation (max 127 characters):</td>
-                           <td>
-                              Text: <?php makeInput('annotation', 20); ?><input type="button" value="OK" onclick="send_cmd('an ' + encodeURI(document.getElementById('annotation').value))"><input type="button" value="Default" onclick="document.getElementById('annotation').value = 'RPi Cam %Y.%M.%D_%h:%m:%s'; send_cmd('an ' + encodeURI(document.getElementById('annotation').value))"><br>
-                              Background: <select onchange="send_cmd('ab ' + this.value)"><?php makeOptions($options_ab, 'anno_background'); ?></select>
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Annotation size(0-99):</td>
-                           <td>
-                              <?php makeInput('anno_text_size', 3, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('as ' + document.getElementById('anno_text_size').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Custom text color:</td>
-                           <td><select id="at_en"><?php makeOptions($options_at_en, 'anno3_custom_text_colour'); ?></select>
-                              y:u:v = <?php makeInput('at_y', 3, 'anno3_custom_text_Y'); ?>:<?php makeInput('at_u', 4, 'anno3_custom_text_U'); ?>:<?php makeInput('at_v', 4, 'anno3_custom_text_V'); ?>
-                              <input type="button" value="OK" onclick="set_at();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Custom background color:</td>
-                           <td><select id="ac_en"><?php makeOptions($options_ac_en, 'anno3_custom_background_colour'); ?></select>
-                              y:u:v = <?php makeInput('ac_y', 3, 'anno3_custom_background_Y'); ?>:<?php makeInput('ac_u', 4, 'anno3_custom_background_U'); ?>:<?php makeInput('ac_v', 4, 'anno3_custom_background_V'); ?>
-                              <input type="button" value="OK" onclick="set_ac();">
-                           </td>
-                           </tr>
-                        <tr>
-                        <?php if (file_exists("pilight_on")) pilight_controls(); ?>
-                        <tr>
-                           <td>Buffer (1000... ms), default 0:</td>
-                           <td><?php makeInput('video_buffer', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('bu ' + document.getElementById('video_buffer').value)"></td>
-                        </tr>                        <tr>
-                           <td>Sharpness (-100...100), default 0:</td>
-                           <td><?php makeInput('sharpness', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('sh ' + document.getElementById('sharpness').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Contrast (-100...100), default 0:</td>
-                           <td><?php makeInput('contrast', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('co ' + document.getElementById('contrast').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Brightness (0...100), default 50:</td>
-                           <td><?php makeInput('brightness', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('br ' + document.getElementById('brightness').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Saturation (-100...100), default 0:</td>
-                           <td><?php makeInput('saturation', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('sa ' + document.getElementById('saturation').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>ISO (100...800), default 0:</td>
-                           <td><?php makeInput('iso', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('is ' + document.getElementById('iso').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Metering Mode, default 'average':</td>
-                           <td><select onchange="send_cmd('mm ' + this.value)"><?php makeOptions($options_mm, 'metering_mode'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Video Stabilisation, default: 'off'</td>
-                           <td><select onchange="send_cmd('vs ' + this.value)"><?php makeOptions($options_vs, 'video_stabilisation'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Exposure Compensation (-10...10), default 0:</td>
-                           <td><?php makeInput('exposure_compensation', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('ec ' + document.getElementById('exposure_compensation').value)"></td>
-                        </tr>
-                        <tr>
-                           <td>Exposure Mode, default 'auto':</td>
-                           <td><select onchange="send_cmd('em ' + this.value)"><?php makeOptions($options_em, 'exposure_mode'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>White Balance, default 'auto':</td>
-                           <td><select onchange="send_cmd('wb ' + this.value)"><?php makeOptions($options_wb, 'white_balance'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>White Balance Gains (x100):</td>
-                           <td> gain_r <?php makeInput('ag_r', 4, 'autowbgain_r', 'number'); ?> gain_b <?php makeInput('ag_b', 4, 'autowbgain_b', 'number'); ?>
-                              <input type="button" value="OK" onclick="set_ag();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Image Effect, default 'none':</td>
-                           <td><select onchange="send_cmd('ie ' + this.value)"><?php makeOptions($options_ie, 'image_effect'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Colour Effect, default 'disabled':</td>
-                           <td><select id="ce_en"><?php makeOptions($options_ce_en, 'colour_effect_en'); ?></select>
-                              u:v = <?php makeInput('ce_u', 4, 'colour_effect_u'); ?>:<?php makeInput('ce_v', 4, 'colour_effect_v'); ?>
-                              <input type="button" value="OK" onclick="set_ce();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Image Statistics, default 'Off':</td>
-                           <td><select onchange="send_cmd('st ' + this.value)"><?php makeOptions($options_st, 'stat_pass'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Rotation, default 0:</td>
-                           <td><select onchange="send_cmd('ro ' + this.value)"><?php makeOptions($options_ro, 'rotation'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Flip, default 'none':</td>
-                           <td><select onchange="send_cmd('fl ' + this.value)"><?php makeOptions($options_fl, 'flip'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Sensor Region, default 0/0/65536/65536:</td>
-                           <td>
-                              x: <?php makeInput('roi_x', 5, 'sensor_region_x', 'number'); ?> y: <?php makeInput('roi_y', 5, 'sensor_region_y', 'number'); ?><br>
-                              w: <?php makeInput('roi_w', 5, 'sensor_region_w', 'number'); ?> h:  <?php makeInput('roi_h', 5, 'sensor_region_h', 'number'); ?>
-                              <input type="button" value="OK" onclick="set_roi();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Shutter speed (0...CameraMax uS), default 0:</td>
-                           <td><?php makeInput('shutter_speed', 8, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('ss ' + document.getElementById('shutter_speed').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Image quality (0...100), default 10:</td>
-                           <td>
-                              <?php makeInput('image_quality', 4, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('qu ' + document.getElementById('image_quality').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Preview quality (1...100), default 10:<br>Width (128...1024), default 512:<br>Divider (1-16), default 1:</td>
-                           <td>
-                              Quality: <?php makeInput('quality', 4); ?><br>
-                              Width: <?php makeInput('width', 4); ?><br>
-                              Divider: <?php makeInput('divider', 4); ?><br>
-                              <input type="button" value="OK" onclick="set_preview();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Raw Layer, default: 'off'</td>
-                           <td><select onchange="send_cmd('rl ' + this.value)"><?php makeOptions($options_rl, 'raw_layer'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Video bitrate (0...25000000), default 17000000:</td>
-                           <td>
-                              <?php makeInput('video_bitrate', 10, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('bi ' + document.getElementById('video_bitrate').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Minimise frag (0/1), default 0:<br>Init Quantisation, default 25:<br>Encoding qp, default 31:</td>
-                           <td>
-                              MF: <?php makeInput('minimise_frag', 4, null, 'number'); ?><br>
-                              IQ: <?php makeInput('initial_quant', 4, null, 'number'); ?><br>
-                              QP: <?php makeInput('encode_qp', 4, null, 'number'); ?><br>
-                              <input type="button" value="OK" onclick="set_encoding();">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>MP4 Boxing mode :</td>
-                           <td><select onchange="send_cmd('bo ' + this.value)"><?php makeOptions($options_bo, 'MP4Box'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Watchdog, default interval 3s, errors 3s:</td>
-                           <td>Interval <?php makeInput('watchdog_interval', 3, null, 'number'); ?>s&nbsp;&nbsp;&nbsp;&nbsp;Errors <?php makeInput('watchdog_errors', 3, null, 'number'); ?>
-                           <input type="button" value="OK" onclick="send_cmd('wd ' + 10 * document.getElementById('watchdog_interval').value + ' ' + document.getElementById('watchdog_errors').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Motion detect mode:</td>
-                           <td><select onchange="send_cmd('mx ' + this.value);setTimeout(function(){location.reload(true);}, 1000);"><?php makeOptions($options_mx, 'motion_external'); ?></select></td>
-                        </tr>
-                        <tr>
-                           <td>Log size lines, default 5000:</td>
-                           <td>
-                              <?php makeInput('log_size', 6, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('ls ' + document.getElementById('log_size').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>HDMI Preview, default: 'off'</td>
-                           <td><select onchange="send_cmd('hp ' + this.value)"><?php makeOptions($options_hp, 'hdmi_preview'); ?></select></td>
-                        </tr>
-                     </table>
-                  </div>
-               </div>
-            </div>
-            <div class="panel panel-default" <?php  if($config['motion_external'] == '1') echo "style ='display:none;'"; ?>>
-               <div class="panel-heading">
-                  <h2 class="panel-title">
-                     <a data-toggle="collapse" data-parent="#accordion" href="#collapseTwo">Motion Settings</a>
-                  </h2>
-               </div>
-               <div id="collapseTwo" class="panel-collapse collapse">
-                  <div class="panel-body">
-                     <table class="settingsTable">
-                        <tr>
-                          <td>Motion Vector Preview:</td>
-                          <td>
-                            <select onchange="send_cmd('vp ' + this.value);setTimeout(function(){location.reload(true);}, 1000);" id="preview_select"><?php makeOptions($options_vp, 'vector_preview'); ?></select>
-                          </td>
-                        </tr>
-                        <tr>
-                           <td>Noise level (1-255 / >1000):</td>
-                           <td>
-                              <?php makeInput('motion_noise', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('mn ' + document.getElementById('motion_noise').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Threshold (1-32000):</td>
-                           <td>
-                              <?php makeInput('motion_threshold', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('mt ' + document.getElementById('motion_threshold').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Clipping factor (2-50), default 3:</td>
-                           <td>
-                              <?php makeInput('motion_clip', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('mc ' + document.getElementById('motion_clip').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Mask Image:</td>
-                           <td>
-                              <?php makeInput('motion_image', 30); ?><input type="button" value="OK" onclick="send_cmd('mi ' + document.getElementById('motion_image').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Delay Frames to detect:</td>
-                           <td>
-                              <?php makeInput('motion_initframes', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('ms ' + document.getElementById('motion_initframes').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Change Frames to start:</td>
-                           <td>
-                              <?php makeInput('motion_startframes', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('mb ' + document.getElementById('motion_startframes').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Still Frames to stop:</td>
-                           <td>
-                              <?php makeInput('motion_stopframes', 5, null, 'number'); ?><input type="button" value="OK" onclick="send_cmd('me ' + document.getElementById('motion_stopframes').value)">
-                           </td>
-                        </tr>
-                        <tr>
-                           <td>Save vectors to .dat:<br>(Uses more space)</td>
-                           <td><select onchange="send_cmd('mf ' + this.value);"><?php makeOptions($options_mf, 'motion_file'); ?></select></td>
-                        </tr>
-                     </table>
-                  </div>
-               </div>
-            </div>
-            <div class="panel panel-default">
-               <div class="panel-heading">
-                  <h2 class="panel-title">
-                     <a data-toggle="collapse" data-parent="#accordion" href="#collapseThree">System</a>
-                  </h2>
-               </div>
-               <div id="collapseThree" class="panel-collapse collapse">
-                  <div class="panel-body">
-                     <input id="toggle_stream" type="button" class="btn btn-primary" value="<?php echo $streamButton; ?>" onclick="set_stream_mode(this.value);">
-                     <input id="allow_simple" type="button" class="btn btn-primary" value="<?php echo $allowSimple; ?>" onclick="set_display(this.value);">
-                     <input id="shutdown_button" type="button" value="shutdown system" onclick="sys_shutdown();" class="btn btn-danger">
-                     <input id="reboot_button" type="button" value="reboot system" onclick="sys_reboot();" class="btn btn-danger">
-                     <input id="reset_button" type="button" value="reset settings" onclick="if(confirm('Are you sure to reset the settings to the default values?')) {send_cmd('rs 1');setTimeout(function(){location.reload(true);}, 1000);}" class="btn btn-danger">
-                     <form action='<?php echo ROOT_PHP; ?>' method='POST'>
-                        <br>Style
-                        <select name='extrastyle' id='extrastyle'>
-                           <?php getExtraStyles(); ?>
-                        </select>
-                        &nbsp;<button type="submit" name="OK" value="OK" >OK</button>
-                     </form>
-					 Set Date/Time <input type='text' size=20 id='timestr' value='13 FEB 2018 12:00:00'><input type="button" value="OK" onclick="sys_settime();"<BR>
-					 <table class="settingsTable">
-						<?php macroUpdates(); ?>
-					 </table>
-                  </div>
-               </div>
-            </div>
-            <div class="panel panel-default">
-               <div class="panel-heading">
-                  <h2 class="panel-title">
-                     <a data-toggle="collapse" data-parent="#accordion" href="#collapseFour">Help</a>
-                  </h2>
-               </div>
-               <div id="collapseFour" class="panel-collapse collapse">
-                  <div class="panel-body">
-                    Github: <a href="https://github.com/silvanmelchior/RPi_Cam_Web_Interface" target="_blank">https://github.com/silvanmelchior/RPi_Cam_Web_Interface</a><br>
-                    Forum: <a href="http://www.raspberrypi.org/forums/viewtopic.php?f=43&t=63276" target="_blank">http://www.raspberrypi.org/forums/viewtopic.php?f=43&t=63276</a><br>
-                    Wiki: <a href="http://elinux.org/RPi-Cam-Web-Interface" target="_blank">http://elinux.org/RPi-Cam-Web-Interface</a>
-                  </div>
-               </div>
-            </div>
-         </div>
-      </div>
-      <?php if ($debugString != "") echo "$debugString<br>"; ?>
-   </body>
-</html>
+<?php if ($canCapture) { ?>
+		<div class="actions-bar" role="group" aria-label="<?php et('live.actions'); ?>">
+			<button type="button" class="action" data-action="video" disabled><?php echo icon('record'); ?><span class="label"><?php echo h(t('js.act.video')); ?></span></button>
+			<button type="button" class="action" data-action="image" disabled><?php echo icon('camera'); ?><span class="label"><?php echo h(t('js.act.image')); ?></span></button>
+			<button type="button" class="action" data-action="timelapse" disabled><?php echo icon('clock'); ?><span class="label"><?php echo h(t('js.act.timelapse')); ?></span></button>
+<?php if ($isAdmin) { ?>
+			<button type="button" class="action" data-action="motion" disabled><?php echo icon('activity'); ?><span class="label"><?php echo h(t('js.act.motion')); ?></span></button>
+			<button type="button" class="action" data-action="camera" disabled><?php echo icon('power'); ?><span class="label"><?php echo h(t('js.act.camera_stop')); ?></span></button>
+<?php } ?>
+		</div>
+<?php } ?>
+
+<?php if ($panMode || $piLight || count($buttons)) { ?>
+		<div class="extras">
+<?php if ($panMode) { ?>
+			<section class="card">
+				<div class="card-head"><h2><?php echo icon('crosshair'); ?><?php et('live.pan'); ?></h2><span class="spacer"></span><span class="muted small"><?php et('live.pan_hint'); ?></span></div>
+				<div class="card-body">
+					<div class="dpad">
+						<button type="button" class="btn up" data-pan="up" aria-label="<?php et('live.up'); ?>"><?php echo icon('chevron-up'); ?></button>
+						<button type="button" class="btn left" data-pan="left" aria-label="<?php et('live.left'); ?>"><?php echo icon('chevron-left'); ?></button>
+						<span class="center"><?php echo icon('camera'); ?></span>
+						<button type="button" class="btn right" data-pan="right" aria-label="<?php et('live.right'); ?>"><?php echo icon('chevron-right'); ?></button>
+						<button type="button" class="btn down" data-pan="down" aria-label="<?php et('live.down'); ?>"><?php echo icon('chevron-down'); ?></button>
+					</div>
+				</div>
+			</section>
+<?php } ?>
+<?php if ($piLight) { ?>
+			<section class="card">
+				<div class="card-head"><h2><?php echo icon('bulb'); ?><?php et('live.pilight'); ?></h2></div>
+				<div class="card-body row">
+					<input class="input" type="color" id="pilightColour" value="#ffffff" aria-label="<?php et('live.pilight'); ?>">
+					<button type="button" class="btn btn-soft" id="pilightToggle"><?php echo icon('bulb'); ?><?php et('live.pilight_toggle'); ?></button>
+				</div>
+			</section>
+<?php } ?>
+<?php if (count($buttons)) { ?>
+			<section class="card">
+				<div class="card-head"><h2><?php echo icon('zap'); ?><?php et('live.userbuttons'); ?></h2></div>
+				<div class="card-body userbuttons">
+<?php foreach ($buttons as $b) { ?>
+					<button type="button" class="btn <?php echo $b['style']; ?>" data-macro="<?php echo h($b['macro']); ?>" <?php echo $b['attrs']; ?>><?php echo h($b['name']); ?></button>
+<?php } ?>
+				</div>
+			</section>
+<?php } ?>
+		</div>
+<?php } ?>
+	</div>
+
+<?php if ($isAdmin) { ?>
+	<section class="card settings-card" aria-labelledby="settingsTitle">
+		<div class="card-head"><h2 id="settingsTitle"><?php echo icon('sliders'); ?><?php et('live.settings'); ?></h2></div>
+		<div class="tabs" role="tablist">
+			<button type="button" class="tab" role="tab" id="tab-image" aria-controls="panel-image" aria-selected="true"><?php echo icon('image'); ?><?php et('tab.image'); ?></button>
+			<button type="button" class="tab" role="tab" id="tab-exposure" aria-controls="panel-exposure" aria-selected="false"><?php echo icon('sun'); ?><?php et('tab.exposure'); ?></button>
+			<button type="button" class="tab" role="tab" id="tab-video" aria-controls="panel-video" aria-selected="false"><?php echo icon('film'); ?><?php et('tab.video'); ?></button>
+			<button type="button" class="tab" role="tab" id="tab-overlay" aria-controls="panel-overlay" aria-selected="false"><?php echo icon('file-text'); ?><?php et('tab.overlay'); ?></button>
+			<button type="button" class="tab" role="tab" id="tab-motion" aria-controls="panel-motion" aria-selected="false"><?php echo icon('activity'); ?><?php et('tab.motion'); ?></button>
+			<button type="button" class="tab" role="tab" id="tab-system" aria-controls="panel-system" aria-selected="false"><?php echo icon('hard-drive'); ?><?php et('tab.system'); ?></button>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-image" aria-labelledby="tab-image">
+			<div class="field">
+				<label class="field-label" for="preset"><?php et('s.preset'); ?></label>
+				<div class="field-control"><select class="select" id="preset"><?php presetOptions(); ?></select></div>
+				<div class="field-hint"><?php et('s.preset_hint'); ?></div>
+			</div>
+<?php
+			group('px', 's.res', array(
+				array('id' => 'video_width', 'label' => 's.video_width', 'type' => 'number', 'min' => 64, 'max' => 4056),
+				array('id' => 'video_height', 'label' => 's.video_height', 'type' => 'number', 'min' => 64, 'max' => 3040),
+				array('id' => 'video_fps', 'label' => 's.video_fps', 'type' => 'number', 'min' => 1, 'max' => 120),
+				array('id' => 'MP4Box_fps', 'label' => 's.MP4Box_fps', 'type' => 'number', 'min' => 1, 'max' => 120),
+				array('id' => 'image_width', 'label' => 's.image_width', 'type' => 'number', 'min' => 64, 'max' => 4056),
+				array('id' => 'image_height', 'label' => 's.image_height', 'type' => 'number', 'min' => 64, 'max' => 3040),
+				// order matters: px expects the divider last
+				array('id' => 'fps_divider', 'label' => 's.fps_divider', 'type' => 'number', 'min' => 1, 'max' => 16),
+			));
+			field(array('id' => 'image_quality', 'cmd' => 'qu', 'label' => 's.image_quality', 'type' => 'range', 'min' => 0, 'max' => 100, 'default' => 10));
+			field(array('id' => 'sharpness', 'cmd' => 'sh', 'label' => 's.sharpness', 'type' => 'range', 'min' => -100, 'max' => 100, 'default' => 0));
+			field(array('id' => 'contrast', 'cmd' => 'co', 'label' => 's.contrast', 'type' => 'range', 'min' => -100, 'max' => 100, 'default' => 0));
+			field(array('id' => 'brightness', 'cmd' => 'br', 'label' => 's.brightness', 'type' => 'range', 'min' => 0, 'max' => 100, 'default' => 50));
+			field(array('id' => 'saturation', 'cmd' => 'sa', 'label' => 's.saturation', 'type' => 'range', 'min' => -100, 'max' => 100, 'default' => 0));
+			field(array('id' => 'image_effect', 'cmd' => 'ie', 'label' => 's.image_effect', 'type' => 'select', 'options' => $options_ie));
+			field(array('id' => 'rotation', 'cmd' => 'ro', 'label' => 's.rotation', 'type' => 'select', 'options' => $options_ro));
+			field(array('id' => 'flip', 'cmd' => 'fl', 'label' => 's.flip', 'type' => 'select', 'options' => $options_fl));
+			group('ce', 's.ce', array(
+				array('id' => 'ce_en', 'key' => 'colour_effect_en', 'label' => 's.colour_effect_en', 'type' => 'toggle'),
+				array('id' => 'ce_u', 'key' => 'colour_effect_u', 'label' => 's.colour_effect_u', 'type' => 'number', 'min' => 0, 'max' => 255),
+				array('id' => 'ce_v', 'key' => 'colour_effect_v', 'label' => 's.colour_effect_v', 'type' => 'number', 'min' => 0, 'max' => 255),
+			), 's.ce_hint', '<span class="swatch" id="ce_swatch"></span><span class="spacer"></span>');
+			group('ri', 's.roi', array(
+				array('id' => 'roi_x', 'key' => 'sensor_region_x', 'label' => 'x', 'type' => 'number', 'min' => 0, 'max' => 65536),
+				array('id' => 'roi_y', 'key' => 'sensor_region_y', 'label' => 'y', 'type' => 'number', 'min' => 0, 'max' => 65536),
+				array('id' => 'roi_w', 'key' => 'sensor_region_w', 'label' => 'w', 'type' => 'number', 'min' => 0, 'max' => 65536),
+				array('id' => 'roi_h', 'key' => 'sensor_region_h', 'label' => 'h', 'type' => 'number', 'min' => 0, 'max' => 65536),
+			), 's.roi_hint');
+			field(array('id' => 'raw_layer', 'cmd' => 'rl', 'label' => 's.raw_layer', 'type' => 'toggle'));
+			field(array('id' => 'stat_pass', 'cmd' => 'st', 'label' => 's.stat_pass', 'type' => 'toggle'));
+			if (cfg('camera_num') > 0) {
+				field(array('id' => 'camera_num', 'cmd' => 'cn', 'label' => 's.camera_num', 'type' => 'select', 'options' => $options_cn));
+			}
+?>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-exposure" aria-labelledby="tab-exposure" hidden>
+<?php
+			field(array('id' => 'exposure_mode', 'cmd' => 'em', 'label' => 's.exposure_mode', 'type' => 'select', 'options' => $options_em));
+			field(array('id' => 'metering_mode', 'cmd' => 'mm', 'label' => 's.metering_mode', 'type' => 'select', 'options' => $options_mm));
+			field(array('id' => 'exposure_compensation', 'cmd' => 'ec', 'label' => 's.exposure_compensation', 'type' => 'range', 'min' => -10, 'max' => 10, 'default' => 0));
+			field(array('id' => 'iso', 'cmd' => 'is', 'label' => 's.iso', 'type' => 'number', 'min' => 0, 'max' => 1600, 'step' => 1, 'default' => 0, 'hint' => 's.iso_hint'));
+			field(array('id' => 'shutter_speed', 'cmd' => 'ss', 'label' => 's.shutter_speed', 'type' => 'number', 'min' => 0, 'step' => 1, 'default' => 0, 'hint' => 's.shutter_speed_hint'));
+			field(array('id' => 'white_balance', 'cmd' => 'wb', 'label' => 's.white_balance', 'type' => 'select', 'options' => $options_wb));
+			group('ag', 's.ag', array(
+				array('id' => 'ag_r', 'key' => 'autowbgain_r', 'label' => 's.autowbgain_r', 'type' => 'number', 'min' => 0, 'max' => 800),
+				array('id' => 'ag_b', 'key' => 'autowbgain_b', 'label' => 's.autowbgain_b', 'type' => 'number', 'min' => 0, 'max' => 800),
+			), 's.ag_hint');
+?>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-video" aria-labelledby="tab-video" hidden>
+<?php
+			field(array('id' => 'video_bitrate', 'cmd' => 'bi', 'label' => 's.video_bitrate', 'type' => 'number', 'min' => 0, 'max' => 25000000, 'step' => 100000, 'default' => 17000000, 'hint' => 's.video_bitrate_hint'));
+			field(array('id' => 'video_stabilisation', 'cmd' => 'vs', 'label' => 's.video_stabilisation', 'type' => 'toggle'));
+			field(array('id' => 'video_split', 'cmd' => 'vi', 'label' => 's.video_split', 'type' => 'number', 'min' => 0, 'default' => 0, 'hint' => 's.video_split_hint'));
+			field(array('id' => 'video_buffer', 'cmd' => 'bu', 'label' => 's.video_buffer', 'type' => 'number', 'min' => 0, 'step' => 100, 'default' => 0, 'hint' => 's.video_buffer_hint'));
+			field(array('id' => 'MP4Box', 'cmd' => 'bo', 'label' => 's.MP4Box', 'type' => 'select', 'options' => $options_bo, 'hint' => 's.MP4Box_hint'));
+			field(array('id' => 'tl_interval', 'cmd' => 'tv', 'label' => 's.tl_interval', 'type' => 'number', 'min' => 0.1, 'max' => 3200, 'step' => 0.1, 'scale' => 10, 'default' => 3, 'hint' => 's.tl_interval_hint'));
+			group('qp', 's.qp', array(
+				array('id' => 'minimise_frag', 'label' => 's.minimise_frag', 'type' => 'number', 'min' => 0, 'max' => 1),
+				array('id' => 'initial_quant', 'label' => 's.initial_quant', 'type' => 'number', 'min' => 0, 'max' => 51),
+				array('id' => 'encode_qp', 'label' => 's.encode_qp', 'type' => 'number', 'min' => 0, 'max' => 51),
+			));
+?>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-overlay" aria-labelledby="tab-overlay" hidden>
+<?php
+			field(array('id' => 'annotation', 'cmd' => 'an', 'label' => 's.annotation', 'type' => 'text', 'maxlength' => 127, 'wide' => true, 'hint' => 's.annotation_hint',
+				'extra' => '<button type="button" class="btn btn-ghost btn-sm" id="annotationDefault">' . icon('rotate-ccw') . h(t('s.annotation_default')) . '</button>'));
+			field(array('id' => 'anno_background', 'cmd' => 'ab', 'label' => 's.anno_background', 'type' => 'toggle'));
+			field(array('id' => 'anno_text_size', 'cmd' => 'as', 'label' => 's.anno_text_size', 'type' => 'range', 'min' => 0, 'max' => 99, 'default' => 50));
+			colourGroup('at', 's.at', 'anno3_custom_text');
+			colourGroup('ac', 's.ac', 'anno3_custom_background');
+?>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-motion" aria-labelledby="tab-motion" hidden>
+<?php
+			field(array('id' => 'motion_external', 'cmd' => 'mx', 'label' => 's.motion_external', 'type' => 'select', 'options' => $options_mx, 'after' => 'reload', 'hint' => 's.motion_external_hint'));
+			if (cfg('motion_external') == '1') {
+				echo '<p style="margin-top:14px"><a class="btn btn-soft" href="motion.php">' . icon('external') . h(t('s.motion_ext_link')) . '</a></p>';
+			} else {
+				field(array('id' => 'vector_preview', 'cmd' => 'vp', 'label' => 's.vector_preview', 'type' => 'toggle', 'after' => 'reload', 'recordingLock' => true));
+				field(array('id' => 'motion_noise', 'cmd' => 'mn', 'label' => 's.motion_noise', 'type' => 'number', 'min' => 1, 'max' => 2000, 'hint' => 's.motion_noise_hint'));
+				field(array('id' => 'motion_threshold', 'cmd' => 'mt', 'label' => 's.motion_threshold', 'type' => 'number', 'min' => 1, 'max' => 32000, 'hint' => 's.motion_threshold_hint'));
+				field(array('id' => 'motion_clip', 'cmd' => 'mc', 'label' => 's.motion_clip', 'type' => 'number', 'min' => 0, 'max' => 50, 'default' => 3, 'hint' => 's.motion_clip_hint'));
+				field(array('id' => 'motion_image', 'cmd' => 'mi', 'label' => 's.motion_image', 'type' => 'text', 'hint' => 's.motion_image_hint'));
+				field(array('id' => 'motion_initframes', 'cmd' => 'ms', 'label' => 's.motion_initframes', 'type' => 'number', 'min' => 0));
+				field(array('id' => 'motion_startframes', 'cmd' => 'mb', 'label' => 's.motion_startframes', 'type' => 'number', 'min' => 1));
+				field(array('id' => 'motion_stopframes', 'cmd' => 'me', 'label' => 's.motion_stopframes', 'type' => 'number', 'min' => 1));
+				field(array('id' => 'motion_file', 'cmd' => 'mf', 'label' => 's.motion_file', 'type' => 'toggle'));
+			}
+?>
+		</div>
+
+		<div class="tab-panel" role="tabpanel" id="panel-system" aria-labelledby="tab-system" hidden>
+<?php
+			group('pv', 's.preview', array(
+				array('id' => 'quality', 'label' => 's.quality', 'type' => 'number', 'min' => 1, 'max' => 100),
+				array('id' => 'width', 'label' => 's.width', 'type' => 'number', 'min' => 128, 'max' => 1024),
+				array('id' => 'divider', 'label' => 's.divider', 'type' => 'number', 'min' => 1, 'max' => 16),
+			));
+?>
+			<div class="field">
+				<label class="field-label" for="streamMode"><?php et('s.stream_mode'); ?></label>
+				<div class="field-control">
+					<select class="select" id="streamMode">
+						<option value="Default-Stream"<?php echo $mjpegMode ? '' : ' selected'; ?>><?php et('s.stream_default'); ?></option>
+						<option value="MJPEG-Stream"<?php echo $mjpegMode ? ' selected' : ''; ?>><?php et('s.stream_mjpeg'); ?></option>
+					</select>
+				</div>
+			</div>
+<?php
+			field(array('id' => 'hdmi_preview', 'cmd' => 'hp', 'label' => 's.hdmi_preview', 'type' => 'toggle'));
+			group('wd', 's.watchdog', array(
+				array('id' => 'watchdog_interval', 'label' => 's.watchdog_interval', 'type' => 'number', 'min' => 0, 'step' => 0.1, 'scale' => 10),
+				array('id' => 'watchdog_errors', 'label' => 's.watchdog_errors', 'type' => 'number', 'min' => 0),
+			));
+			field(array('id' => 'log_size', 'cmd' => 'ls', 'label' => 's.log_size', 'type' => 'number', 'min' => 0, 'default' => 5000, 'hint' => 's.log_size_hint'));
+?>
+			<div class="field-group">
+				<div class="field-label"><?php et('s.macros'); ?></div>
+				<div class="field-hint"><?php et('s.macros_hint'); ?></div>
+				<div class="stack" style="gap:8px">
+<?php foreach ($macros as $i => $macro) {
+					$value = cfg($macro);
+					$enabled = substr($value, 0, 1) != '-';
+					if (!$enabled) $value = substr($value, 1);
+?>
+					<div class="row macro-row" data-index="<?php echo $i; ?>">
+						<label class="switch" title="<?php echo h($macro); ?>"><input type="checkbox" class="macro-enabled"<?php echo $enabled ? ' checked' : ''; ?>><span class="track"></span><span class="sr-only"><?php echo h($macro); ?></span></label>
+						<code style="min-width:7.5em"><?php echo h($macro); ?></code>
+						<input class="input input-sm macro-value" type="text" autocomplete="off" value="<?php echo h($value); ?>" aria-label="<?php echo h($macro); ?>" style="flex:1;min-width:120px">
+						<button type="button" class="btn btn-soft btn-sm btn-icon macro-apply" title="<?php et('btn.apply'); ?>" aria-label="<?php et('btn.apply'); ?>"><?php echo icon('check'); ?></button>
+					</div>
+<?php } ?>
+				</div>
+			</div>
+			<div class="field-group">
+				<div class="field-label"><?php et('s.time'); ?></div>
+				<div class="field-hint"><?php et('s.time_hint'); ?></div>
+				<div class="row">
+					<button type="button" class="btn btn-soft btn-sm" id="timeSync"><?php echo icon('clock'); ?><?php et('s.time_sync'); ?></button>
+					<input class="input input-sm" type="text" id="timestr" placeholder="<?php et('s.time_manual'); ?>" style="flex:1;min-width:160px">
+					<button type="button" class="btn btn-soft btn-sm" id="timeSet"><?php et('btn.apply'); ?></button>
+				</div>
+			</div>
+			<div class="field-group">
+				<div class="field-label"><?php et('s.danger'); ?></div>
+				<div class="danger-zone" style="margin-top:8px">
+					<button type="button" class="btn btn-soft-danger btn-sm" data-system="reset"><?php echo icon('rotate-ccw'); ?><?php et('s.reset'); ?></button>
+					<button type="button" class="btn btn-soft-danger btn-sm" data-system="reboot"><?php echo icon('refresh'); ?><?php et('s.reboot'); ?></button>
+					<button type="button" class="btn btn-danger btn-sm" data-system="shutdown"><?php echo icon('power'); ?><?php et('s.shutdown'); ?></button>
+				</div>
+			</div>
+			<div class="field-group">
+				<div class="field-label"><?php et('s.help'); ?></div>
+				<ul class="link-list">
+					<li><a href="https://github.com/DensenDeluxe/RPi_Cam_Web_Interface_Rework" target="_blank" rel="noopener"><?php echo icon('github'); ?>GitHub (Rework)</a></li>
+					<li><a href="https://github.com/silvanmelchior/RPi_Cam_Web_Interface" target="_blank" rel="noopener"><?php echo icon('github'); ?>GitHub (Original)</a></li>
+					<li><a href="https://elinux.org/RPi-Cam-Web-Interface" target="_blank" rel="noopener"><?php echo icon('book'); ?>Wiki</a></li>
+					<li><a href="https://forums.raspberrypi.com/viewtopic.php?t=63276" target="_blank" rel="noopener"><?php echo icon('message'); ?>Forum</a></li>
+				</ul>
+				<p class="muted small" style="margin-top:10px"><?php echo h(CAM_STRING); ?></p>
+			</div>
+		</div>
+	</section>
+<?php } ?>
+</div>
+<?php
+	pageFooter(array('js/live.js'), array('live' => array(
+		'mjpeg' => $mjpegMode,
+		'videoFps' => (int)cfg('video_fps', 25),
+		'divider' => (int)cfg('divider', 1),
+		'panMode' => $panMode,
+		'pan' => $panInit[0],
+		'tilt' => $panInit[1],
+		'fullscreen' => cfg('fullscreen') == 1,
+	)));
+?>
