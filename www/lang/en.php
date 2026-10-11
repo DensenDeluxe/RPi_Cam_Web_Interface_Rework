@@ -56,6 +56,7 @@ return array(
 	's.video_fps' => 'Video FPS',
 	's.MP4Box_fps' => 'Boxing FPS',
 	's.fps_divider' => 'FPS divider',
+	's.res_hint' => 'Video is recorded at most at 1920×1080 (limit of the H.264 hardware encoder). Full sensor stills: Camera Module 1 2592×1944, Camera Module 2 3280×2464, HQ Camera 4056×3040.',
 	's.image_width' => 'Image width',
 	's.image_height' => 'Image height',
 	's.image_quality' => 'JPEG quality',

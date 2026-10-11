@@ -1,5 +1,23 @@
 # Changelog
 
+## 7.0.1 – Hardware compatibility
+
+- README: detailed compatibility tables for boards, operating systems, official and third-party cameras,
+  clones and USB webcams (only Pi 1–4/Zero/CM1–4 with 32-bit Buster/Bullseye and OV5647, IMX219 or
+  IMX477 sensors work with raspimjpeg).
+- Installer: detects the 64-bit userland with `dpkg --print-architecture` (the old `uname -m` check warned
+  on every Pi 4 with 32-bit OS because the firmware boots a 64-bit kernel), warns for Pi 400, the first
+  Pi Zero, Pi 500, Compute Module 5, non-Raspberry-Pi boards and unknown Debian releases.
+- Installer: uses `raspimjpeg-stretch` on Debian 9 (the current build needs glibc 2.28), installs
+  `libraspberrypi-dev` on Bullseye (unversioned MMAL libraries), installs `gpac` only when the release
+  provides it, and checks after the install that raspimjpeg can load and that `vcgencmd get_camera`
+  reports an enabled and detected camera.
+- `cam.sh` points to `raspi-config` on Bullseye and newer instead of writing an incomplete legacy setup.
+- Settings: video size limited to 1920×1080 (H.264 hardware encoder), ISO to 800, frame rate up to 200;
+  the built-in resolution presets keep the still size so they suit every camera module.
+- Presets: fixed the "Full Chip" entries (video above 1080p could not be recorded) and wrong labels,
+  added presets for the HQ Camera (`uPresetsN-IMX477.html`, `uPresetsP-IMX477.html`).
+
 ## 7.0.0 – Rework
 
 ### New interface

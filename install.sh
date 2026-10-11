@@ -42,9 +42,16 @@ if [ $(dpkg-query -W -f='${Status}' "dialog" 2>/dev/null | grep -c "ok installed
   sudo apt-get install -y dialog
 fi
 
-# Debian release and the PHP version it ships
-VERSION=$(cut -d. -f1 /etc/debian_version 2>/dev/null)
-echo "Debian version: $VERSION"
+# Debian release and the PHP version it ships (VERSION=0 when unknown, e.g. "trixie/sid")
+DEBIAN_RAW=$(cat /etc/debian_version 2>/dev/null)
+VERSION=$(echo "$DEBIAN_RAW" | cut -d. -f1)
+case "$VERSION" in
+   ''|*[!0-9]*) VERSION=0 ;;
+esac
+# userland architecture (armhf or arm64), uname -m shows the kernel which is 64-bit on Pi 4 even with 32-bit OS
+ARCH=$(dpkg --print-architecture 2>/dev/null)
+MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+echo "Debian version: $DEBIAN_RAW, architecture: $ARCH, model: $MODEL"
 case "$VERSION" in
    9)  phpversion=7.0 ;;
    10) phpversion=7.3 ;;
@@ -59,16 +66,33 @@ if [ "$VERSION" -ge 11 ] 2>/dev/null; then
    sudo mkdir -p /opt/vc/bin
 fi
 
-# raspimjpeg needs the legacy (MMAL) camera stack of 32-bit Raspberry Pi OS up to Bullseye
+# raspimjpeg needs the legacy (MMAL) camera stack: a Raspberry Pi 1-4 / Zero / CM1-4 with a CSI camera
+# connector and 32-bit Raspberry Pi OS Buster or Bullseye (Legacy Camera enabled)
 fn_legacy_camera_check ()
 {
    legacy_warning=""
-   if grep -qs "Raspberry Pi 5" /proc/device-tree/model; then
-      legacy_warning="This is a Raspberry Pi 5. It has no legacy camera stack, so raspimjpeg can not access the camera."
-   elif [ "$VERSION" -ge 12 ] 2>/dev/null; then
-      legacy_warning="Debian $VERSION (Raspberry Pi OS Bookworm or newer) no longer contains the legacy camera stack (MMAL) that raspimjpeg needs. The web interface installs, but the camera will most likely not work. Use Raspberry Pi OS Bullseye (32-bit, Legacy Camera enabled) for a working setup."
-   elif [ "$(uname -m)" = "aarch64" ]; then
-      legacy_warning="This is a 64-bit OS. raspimjpeg is a 32-bit program and the legacy camera libraries are only available on 32-bit Raspberry Pi OS."
+   case "$MODEL" in
+      "")
+         legacy_warning="This does not look like a Raspberry Pi (no device tree model). raspimjpeg needs the VideoCore GPU and legacy camera stack of a Raspberry Pi." ;;
+      *"Raspberry Pi 5"*|*"Compute Module 5"*)
+         legacy_warning="$MODEL has no legacy camera stack (MMAL), so raspimjpeg can not access the camera." ;;
+      *"Raspberry Pi 400"*)
+         legacy_warning="The Raspberry Pi 400 has no camera connector, and raspimjpeg does not support USB webcams." ;;
+      *"Raspberry Pi Zero Rev 1.2"*)
+         legacy_warning="The first Raspberry Pi Zero (Rev 1.2) has no camera connector, and raspimjpeg does not support USB webcams." ;;
+      *"Raspberry Pi"*)
+         ;;
+      *)
+         legacy_warning="$MODEL is not a Raspberry Pi. Boards like Orange Pi, Radxa or Jetson have no VideoCore GPU, so raspimjpeg can not run." ;;
+   esac
+   if [ -z "$legacy_warning" ]; then
+      if [ "$ARCH" = "arm64" ]; then
+         legacy_warning="This is a 64-bit OS (arm64). raspimjpeg is a 32-bit program and the legacy camera libraries only exist for 32-bit Raspberry Pi OS."
+      elif [ "$VERSION" -eq 0 ]; then
+         legacy_warning="Unknown Debian release ($DEBIAN_RAW). The camera only works on 32-bit Raspberry Pi OS Buster or Bullseye."
+      elif [ "$VERSION" -ge 12 ]; then
+         legacy_warning="Debian $VERSION (Raspberry Pi OS Bookworm or newer) no longer contains the legacy camera stack (MMAL) that raspimjpeg needs. The web interface installs, but the camera will not work. Use 32-bit Raspberry Pi OS Bullseye with Legacy Camera enabled."
+      fi
    fi
    if [ -n "$legacy_warning" ]; then
       echo "WARNING: $legacy_warning"
@@ -174,6 +198,50 @@ if [ ! "${rpicamdir:0:1}" == "" ]; then
 else
    rpicamdirEsc=""
 fi
+
+# MP4Box (package gpac) wraps recordings into mp4 files. gpac is not available on every Debian release.
+fn_install_mp4box ()
+{
+   if ! command -v MP4Box >/dev/null 2>&1 && apt-cache show gpac >/dev/null 2>&1; then
+      sudo apt-get install -y gpac
+   fi
+   if ! command -v MP4Box >/dev/null 2>&1; then
+      echo "WARNING: MP4Box (package gpac) is not available. Videos stay raw .h264 files; set 'MP4 boxing' to Off in the settings."
+   fi
+}
+
+# Bullseye ships the MMAL libraries as libmmal_core.so.0 etc., the unversioned names raspimjpeg links to come with libraspberrypi-dev
+fn_install_mmal_libs ()
+{
+   if [ "$VERSION" -eq 11 ] && [ "$ARCH" = "armhf" ] && ! dpkg -s libraspberrypi-dev >/dev/null 2>&1; then
+      sudo apt-get install -y libraspberrypi-dev
+   fi
+}
+
+# checks that raspimjpeg can load and that the legacy camera is enabled and sees a camera
+fn_post_install_check ()
+{
+   problems=""
+   missing=$(ldd /opt/vc/bin/raspimjpeg 2>/dev/null | grep "not found" | awk '{print $1}' | tr '\n' ' ')
+   if [ -n "$missing" ]; then
+      problems="${problems}raspimjpeg can not load: ${missing}\n\n"
+   fi
+   if [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 11 ] && command -v vcgencmd >/dev/null 2>&1; then
+      camera=$(vcgencmd get_camera 2>/dev/null)
+      case "$camera" in
+         *supported=0*)
+            problems="${problems}The legacy camera is not enabled. Bullseye: sudo raspi-config > Interface Options > Legacy Camera. Buster: sudo raspi-config > Interface Options > Camera. Then reboot.\n\n" ;;
+         *detected=0*)
+            problems="${problems}The legacy camera firmware detects no camera. Supported are Camera Module v1 (OV5647), v2 (IMX219) and the HQ Camera (IMX477). Camera Module 3, Global Shutter and AI Camera need libcamera and do not work.\n\n" ;;
+      esac
+   fi
+   if [ -n "$problems" ]; then
+      echo -e "WARNING:\n$problems"
+      if [ "$1" != "q" ]; then
+         dialog --title "Camera check" --backtitle "$backtitle" --msgbox "$problems" 18 70
+      fi
+   fi
+}
 
 fn_stop ()
 { # This is function stop
@@ -397,18 +465,21 @@ else
 fi
 
 if [ "$webserver" == "apache" ]; then
-   sudo apt-get install -y apache2 $phpv $phpv-cli libapache2-mod-$phpv gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y apache2 $phpv $phpv-cli libapache2-mod-$phpv motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_apache
 elif [ "$webserver" == "nginx" ]; then
-   sudo apt-get install -y nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_nginx
 elif [ "$webserver" == "lighttpd" ]; then
-   sudo apt-get install -y  lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv gpac motion zip gstreamer1.0-tools
+   sudo apt-get install -y  lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv motion zip gstreamer1.0-tools
    if [ $? -ne 0 ]; then exit; fi
    fn_lighttpd
 fi
+
+fn_install_mp4box
+fn_install_mmal_libs
 
 #Make sure user www-data has bash shell
 sudo sed -i "s/^www-data:x.*/www-data:x:33:33:www-data:\/var\/www:\/bin\/bash/g" /etc/passwd
@@ -452,7 +523,13 @@ sudo chown -R www-data:www-data /var/www$rpicamdir
 sudo cp etc/sudoers.d/RPI_Cam_Web_Interface /etc/sudoers.d/
 sudo chmod 440 /etc/sudoers.d/RPI_Cam_Web_Interface
 
-sudo cp -r bin/raspimjpeg /opt/vc/bin/
+# Stretch has glibc 2.24, the current raspimjpeg build needs 2.28
+raspimjpegbin=bin/raspimjpeg
+if [ "$VERSION" -eq 9 ]; then
+   raspimjpegbin=bin/raspimjpeg-stretch
+fi
+sudo mkdir -p /opt/vc/bin
+sudo cp $raspimjpegbin /opt/vc/bin/raspimjpeg
 sudo chmod 755 /opt/vc/bin/raspimjpeg
 if [ ! -e /usr/bin/raspimjpeg ]; then
    sudo ln -s /opt/vc/bin/raspimjpeg /usr/bin/raspimjpeg
@@ -490,6 +567,8 @@ fi
 
 sudo cp www/schedule.php /var/www$rpicamdir/schedule.php
 sudo chown www-data:www-data /var/www$rpicamdir/schedule.php
+
+fn_post_install_check "$1"
 
 if [ $# -eq 0 ] || [ "$1" != "q" ]; then
    fn_reboot

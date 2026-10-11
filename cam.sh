@@ -84,6 +84,15 @@ do_finish() {
 
 do_camera ()
 {
+  DEBIAN_MAJOR=$(cut -d. -f1 /etc/debian_version 2>/dev/null)
+  case "$DEBIAN_MAJOR" in
+    ''|*[!0-9]*) DEBIAN_MAJOR=99 ;;
+  esac
+  if [ "$DEBIAN_MAJOR" -ge 11 ]; then
+    # Bullseye needs more than start_x=1 (camera_auto_detect, KMS driver), raspi-config does it correctly
+    dialog --msgbox "On Raspberry Pi OS Bullseye enable the camera with: sudo raspi-config > Interface Options > Legacy Camera. Bookworm and newer have no legacy camera stack." 10 60
+    exit 0
+  fi
   if [ ! -e /boot/start_x.elf ]; then
     dialog --msgbox "Your firmware appears to be out of date (no start_x.elf). Please update" 20 60
 	exit 0

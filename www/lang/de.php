@@ -50,6 +50,7 @@ return array(
 	's.video_fps' => 'Video-FPS',
 	's.MP4Box_fps' => 'MP4-FPS',
 	's.fps_divider' => 'FPS-Teiler',
+	's.res_hint' => 'Videos werden mit höchstens 1920×1080 aufgenommen (Grenze des H.264-Hardware-Encoders). Fotos in voller Sensorauflösung: Kamera-Modul 1 2592×1944, Kamera-Modul 2 3280×2464, HQ-Kamera 4056×3040.',
 	's.image_width' => 'Fotobreite',
 	's.image_height' => 'Fotohöhe',
 	's.image_quality' => 'JPEG-Qualität',

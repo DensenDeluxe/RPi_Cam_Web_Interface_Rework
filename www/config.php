@@ -3,7 +3,7 @@
 	define('LBASE_DIR',dirname(__FILE__));
 	//Global defines and utility functions
 	// version string
-	define('APP_VERSION', 'v7.0.0');
+	define('APP_VERSION', 'v7.0.1');
 
 	// name of this application
 	define('APP_NAME', 'RPi Cam Control');

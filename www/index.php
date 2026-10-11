@@ -152,12 +152,13 @@
 				}
 			}
 		} else {
+			// "-" keeps the current image size, so the presets suit every camera module
 			$presets = array(
-				'1920 1080 25 25 2592 1944 1' => 'Full HD 1080p 16:9',
-				'1280 0720 25 25 2592 1944 1' => 'HD-ready 720p 16:9',
-				'1296 972 25 25 2592 1944 1' => 'Max View 972p 4:3',
-				'768 576 25 25 2592 1944 1' => 'SD TV 576p 4:3',
-				'1920 1080 01 30 2592 1944 1' => 'Full HD Timelapse (x30) 1080p 16:9',
+				'1920 1080 25 25 - - 1' => 'Full HD 1080p 16:9',
+				'1280 0720 25 25 - - 1' => 'HD-ready 720p 16:9',
+				'1296 972 25 25 - - 1' => 'Max View 972p 4:3',
+				'768 576 25 25 - - 1' => 'SD TV 576p 4:3',
+				'1920 1080 01 30 - - 1' => 'Full HD Timelapse (x30) 1080p 16:9',
 			);
 			foreach ($presets as $v => $name) echo '<option value="' . h($v) . '">' . h($name) . '</option>';
 		}
@@ -287,15 +288,16 @@
 			</div>
 <?php
 			group('px', 's.res', array(
-				array('id' => 'video_width', 'label' => 's.video_width', 'type' => 'number', 'min' => 64, 'max' => 4056),
-				array('id' => 'video_height', 'label' => 's.video_height', 'type' => 'number', 'min' => 64, 'max' => 3040),
-				array('id' => 'video_fps', 'label' => 's.video_fps', 'type' => 'number', 'min' => 1, 'max' => 120),
-				array('id' => 'MP4Box_fps', 'label' => 's.MP4Box_fps', 'type' => 'number', 'min' => 1, 'max' => 120),
+				// the VideoCore H.264 encoder records at most 1920x1080
+				array('id' => 'video_width', 'label' => 's.video_width', 'type' => 'number', 'min' => 64, 'max' => 1920),
+				array('id' => 'video_height', 'label' => 's.video_height', 'type' => 'number', 'min' => 64, 'max' => 1080),
+				array('id' => 'video_fps', 'label' => 's.video_fps', 'type' => 'number', 'min' => 1, 'max' => 200),
+				array('id' => 'MP4Box_fps', 'label' => 's.MP4Box_fps', 'type' => 'number', 'min' => 1, 'max' => 200),
 				array('id' => 'image_width', 'label' => 's.image_width', 'type' => 'number', 'min' => 64, 'max' => 4056),
 				array('id' => 'image_height', 'label' => 's.image_height', 'type' => 'number', 'min' => 64, 'max' => 3040),
 				// order matters: px expects the divider last
 				array('id' => 'fps_divider', 'label' => 's.fps_divider', 'type' => 'number', 'min' => 1, 'max' => 16),
-			));
+			), 's.res_hint');
 			field(array('id' => 'image_quality', 'cmd' => 'qu', 'label' => 's.image_quality', 'type' => 'range', 'min' => 0, 'max' => 100, 'default' => 10));
 			field(array('id' => 'sharpness', 'cmd' => 'sh', 'label' => 's.sharpness', 'type' => 'range', 'min' => -100, 'max' => 100, 'default' => 0));
 			field(array('id' => 'contrast', 'cmd' => 'co', 'label' => 's.contrast', 'type' => 'range', 'min' => -100, 'max' => 100, 'default' => 0));
@@ -328,7 +330,7 @@
 			field(array('id' => 'exposure_mode', 'cmd' => 'em', 'label' => 's.exposure_mode', 'type' => 'select', 'options' => $options_em));
 			field(array('id' => 'metering_mode', 'cmd' => 'mm', 'label' => 's.metering_mode', 'type' => 'select', 'options' => $options_mm));
 			field(array('id' => 'exposure_compensation', 'cmd' => 'ec', 'label' => 's.exposure_compensation', 'type' => 'range', 'min' => -10, 'max' => 10, 'default' => 0));
-			field(array('id' => 'iso', 'cmd' => 'is', 'label' => 's.iso', 'type' => 'number', 'min' => 0, 'max' => 1600, 'step' => 1, 'default' => 0, 'hint' => 's.iso_hint'));
+			field(array('id' => 'iso', 'cmd' => 'is', 'label' => 's.iso', 'type' => 'number', 'min' => 0, 'max' => 800, 'step' => 1, 'default' => 0, 'hint' => 's.iso_hint'));
 			field(array('id' => 'shutter_speed', 'cmd' => 'ss', 'label' => 's.shutter_speed', 'type' => 'number', 'min' => 0, 'step' => 1, 'default' => 0, 'hint' => 's.shutter_speed_hint'));
 			field(array('id' => 'white_balance', 'cmd' => 'wb', 'label' => 's.white_balance', 'type' => 'select', 'options' => $options_wb));
 			group('ag', 's.ag', array(

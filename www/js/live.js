@@ -359,7 +359,7 @@
 		['#ce_u', '#ce_v'].forEach(function (s) { var el = $(s); if (el) el.addEventListener('input', updateSwatch); });
 	}
 
-	// resolution presets: "videoW videoH fps boxFps imageW imageH [divider]"
+	// resolution presets: "videoW videoH fps boxFps imageW imageH [divider]", "-" keeps the current value
 	var preset = $('#preset');
 	if (preset) preset.addEventListener('change', function () {
 		if (!preset.value) return;
@@ -367,7 +367,7 @@
 		var ids = ['video_width', 'video_height', 'video_fps', 'MP4Box_fps', 'image_width', 'image_height', 'fps_divider'];
 		ids.forEach(function (id, i) {
 			var el = document.getElementById(id);
-			if (el && v[i] !== undefined) el.value = parseInt(v[i], 10);
+			if (el && v[i] !== undefined && v[i] !== '-') el.value = parseInt(v[i], 10);
 		});
 		var group = document.querySelector('[data-group-cmd="px"]');
 		if (group) applyGroup(group);

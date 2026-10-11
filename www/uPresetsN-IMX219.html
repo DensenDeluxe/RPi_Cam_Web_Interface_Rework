@@ -1,6 +1,6 @@
 <option value="1920 1080 30 30 3280 2464">Select option...</option>
 <option value="1920 1080 30 30 3280 2464">N-IMX219-30fps-Full HD 1080p 16:9</option>
-<option value="3280 2464 15 15 3280 2464">N-IMX219-15fps-Full Chip 2959 X 1944 4:3</option>
+<option value="1640 1232 15 15 3280 2464">N-IMX219-15fps-Full Chip stills 3280 X 2464, video 1640 X 1232 4:3</option>
 <option value="1640 1232 40 40 3280 2464">N-IMX219-40fps-Max View 1640 X 1232 4:3</option>
 <option value="1640 922 40 40 3280 2464">N-IMX219-40fps-Max View 1640 X 922 16:9</option>
 <option value="1280 720 90 90 3280 2464">N-IMX219-90fps-HD 720p 16:9</option>
@@ -9,7 +9,8 @@
 
 
 # Version 2.x (IMX219)
-# H264 Encoder Limits are 1920 X 1080 based on the GPU - Exploring Higher Frame Rate options and how that might be recordable - They just don't record video and the button does not work.
+# The H.264 encoder records at most 1920 X 1080, so the Full Chip preset takes full resolution stills and records 1640 X 1232 video.
+# raspimjpeg encodes with H.264 level 4.0 (1080p30): 1640 X 1232 at 40fps and 720p at 90fps exceed it, lower the fps if recordings drop frames.
 
 # Mode	Size	Aspect Ratio	Frame rates	FOV	Binning
 # 0	automatic selection
