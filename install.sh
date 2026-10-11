@@ -66,43 +66,24 @@ if [ "$VERSION" -ge 11 ] 2>/dev/null; then
    sudo mkdir -p /opt/vc/bin
 fi
 
-# raspimjpeg needs the legacy (MMAL) camera stack: a Raspberry Pi 1-4 / Zero / CM1-4 with a CSI camera
-# connector and 32-bit Raspberry Pi OS Buster or Bullseye (Legacy Camera enabled)
-fn_legacy_camera_check ()
+# Camera daemon: raspimjpeg (legacy MMAL camera stack, Buster or Bullseye with Legacy Camera enabled)
+# or rpicamd (libcamera/Picamera2 for every current Raspberry Pi camera and board, V4L2 for USB webcams
+# and other boards). camerabackend in config.txt can force "raspimjpeg" or "rpicamd".
+fn_select_camera_backend ()
 {
-   legacy_warning=""
-   case "$MODEL" in
-      "")
-         legacy_warning="This does not look like a Raspberry Pi (no device tree model). raspimjpeg needs the VideoCore GPU and legacy camera stack of a Raspberry Pi." ;;
-      *"Raspberry Pi 5"*|*"Compute Module 5"*)
-         legacy_warning="$MODEL has no legacy camera stack (MMAL), so raspimjpeg can not access the camera." ;;
-      *"Raspberry Pi 400"*)
-         legacy_warning="The Raspberry Pi 400 has no camera connector, and raspimjpeg does not support USB webcams." ;;
-      *"Raspberry Pi Zero Rev 1.2"*)
-         legacy_warning="The first Raspberry Pi Zero (Rev 1.2) has no camera connector, and raspimjpeg does not support USB webcams." ;;
-      *"Raspberry Pi"*)
-         ;;
-      *)
-         legacy_warning="$MODEL is not a Raspberry Pi. Boards like Orange Pi, Radxa or Jetson have no VideoCore GPU, so raspimjpeg can not run." ;;
-   esac
-   if [ -z "$legacy_warning" ]; then
-      if [ "$ARCH" = "arm64" ]; then
-         legacy_warning="This is a 64-bit OS (arm64). raspimjpeg is a 32-bit program and the legacy camera libraries only exist for 32-bit Raspberry Pi OS."
-      elif [ "$VERSION" -eq 0 ]; then
-         legacy_warning="Unknown Debian release ($DEBIAN_RAW). The camera only works on 32-bit Raspberry Pi OS Buster or Bullseye."
-      elif [ "$VERSION" -ge 12 ]; then
-         legacy_warning="Debian $VERSION (Raspberry Pi OS Bookworm or newer) no longer contains the legacy camera stack (MMAL) that raspimjpeg needs. The web interface installs, but the camera will not work. Use 32-bit Raspberry Pi OS Bullseye with Legacy Camera enabled."
-      fi
+   backend="$camerabackend"
+   if [ "$backend" != "raspimjpeg" ] && [ "$backend" != "rpicamd" ]; then
+      backend="rpicamd"
+      case "$MODEL" in
+         *"Raspberry Pi"*)
+            if [ "$ARCH" = "armhf" ] && [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 10 ]; then
+               backend="raspimjpeg"
+            elif [ "$ARCH" = "armhf" ] && [ "$VERSION" -eq 11 ] && vcgencmd get_camera 2>/dev/null | grep -q "supported=1"; then
+               backend="raspimjpeg"
+            fi ;;
+      esac
    fi
-   if [ -n "$legacy_warning" ]; then
-      echo "WARNING: $legacy_warning"
-      if [ "$1" != "q" ]; then
-         dialog --title "Camera compatibility" --backtitle "$backtitle" --yes-label "Continue" --no-label "Abort" --yesno "$legacy_warning\n\nContinue anyway?" 14 64
-         if [ $? -ne 0 ]; then
-            exit 1
-         fi
-      fi
-   fi
+   echo "Camera daemon: $backend"
 }
 
 # Terminal colors
@@ -116,8 +97,6 @@ version=$(cat $versionfile | grep "'APP_VERSION'" | cut -d "'" -f4)
 backtitle="Copyright (c) 2015, Bob Tidey. RPi Cam $version"
 jpglink="no"
 
-fn_legacy_camera_check "$1"
-
 # Config options located in ./config.txt. In first run script makes that file for you.
 if [ ! -e ./config.txt ]; then
       sudo echo "#This is config file for main installer. Put any extra options in here." > ./config.txt
@@ -129,6 +108,7 @@ if [ ! -e ./config.txt ]; then
       sudo echo "autostart=\"yes\"" >> ./config.txt
       sudo echo "jpglink=\"no\"" >> ./config.txt
       sudo echo "phpversion=\"$phpversion\"" >> ./config.txt
+      sudo echo "camerabackend=\"auto\"" >> ./config.txt
       sudo echo "" >> ./config.txt
       sudo chmod 664 ./config.txt
 fi
@@ -177,6 +157,7 @@ if [ $# -eq 0 ] || [ "$1" != "q" ]; then
       sudo echo "autostart=\"$autostart\"" >> ./config.txt
       sudo echo "jpglink=\"$jpglink\"" >> ./config.txt
       sudo echo "phpversion=\"$phpversion\"" >> ./config.txt
+      sudo echo "camerabackend=\"${camerabackend:-auto}\"" >> ./config.txt
       sudo echo "" >> ./config.txt
    else
       echo "exit" > ./exitfile.txt
@@ -218,21 +199,50 @@ fn_install_mmal_libs ()
    fi
 }
 
-# checks that raspimjpeg can load and that the legacy camera is enabled and sees a camera
+# rpicamd and the packages it uses, each only when the distribution provides it
+fn_install_rpicamd ()
+{
+   pkgs=""
+   for p in python3-numpy python3-opencv python3-picamera2 python3-pil ffmpeg v4l-utils; do
+      if apt-cache show $p >/dev/null 2>&1; then pkgs="$pkgs $p"; fi
+   done
+   sudo apt-get install -y --no-install-recommends $pkgs
+   sudo mkdir -p /opt/rpicam
+   sudo install -m 755 backend/rpicamd.py /opt/rpicam/rpicamd.py
+   sudo ln -sf /opt/rpicam/rpicamd.py /usr/bin/raspimjpeg
+   for g in video render; do
+      if getent group $g >/dev/null; then sudo usermod -a -G $g www-data; fi
+   done
+}
+
+# checks that the selected camera daemon can run and finds a camera
 fn_post_install_check ()
 {
    problems=""
+   if [ "$backend" = "rpicamd" ]; then
+      if ! python3 -c "import numpy" >/dev/null 2>&1; then
+         problems="${problems}python3-numpy is missing, rpicamd can not start.\n\n"
+      fi
+      cams=$(python3 -c "from picamera2 import Picamera2; print(len(Picamera2.global_camera_info()))" 2>/dev/null)
+      if [ -z "$cams" ] || [ "$cams" = "0" ]; then
+         if ! ls /dev/v4l/by-id/*video-index0 >/dev/null 2>&1 && [ ! -e /dev/video0 ]; then
+            problems="${problems}No camera found. CSI camera: check the cable (on Bullseye, Legacy Camera must be off for rpicamd). USB webcam: plug it in. Then restart with ./start.sh.\n\n"
+         fi
+      fi
+   fi
+   if [ "$backend" = "raspimjpeg" ]; then
    missing=$(ldd /opt/vc/bin/raspimjpeg 2>/dev/null | grep "not found" | awk '{print $1}' | tr '\n' ' ')
    if [ -n "$missing" ]; then
       problems="${problems}raspimjpeg can not load: ${missing}\n\n"
    fi
-   if [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 11 ] && command -v vcgencmd >/dev/null 2>&1; then
+   fi
+   if [ "$backend" = "raspimjpeg" ] && [ "$VERSION" -ge 9 ] && [ "$VERSION" -le 11 ] && command -v vcgencmd >/dev/null 2>&1; then
       camera=$(vcgencmd get_camera 2>/dev/null)
       case "$camera" in
          *supported=0*)
             problems="${problems}The legacy camera is not enabled. Bullseye: sudo raspi-config > Interface Options > Legacy Camera. Buster: sudo raspi-config > Interface Options > Camera. Then reboot.\n\n" ;;
          *detected=0*)
-            problems="${problems}The legacy camera firmware detects no camera. Supported are Camera Module v1 (OV5647), v2 (IMX219) and the HQ Camera (IMX477). Camera Module 3, Global Shutter and AI Camera need libcamera and do not work.\n\n" ;;
+            problems="${problems}The legacy camera firmware detects no camera. It supports Camera Module v1 (OV5647), v2 (IMX219) and the HQ Camera (IMX477). For Camera Module 3, Global Shutter, AI Camera and other libcamera cameras turn Legacy Camera off in raspi-config, set camerabackend=\"rpicamd\" in config.txt and run ./install.sh again.\n\n" ;;
       esac
    fi
    if [ -n "$problems" ]; then
@@ -478,9 +488,6 @@ elif [ "$webserver" == "lighttpd" ]; then
    fn_lighttpd
 fi
 
-fn_install_mp4box
-fn_install_mmal_libs
-
 #Make sure user www-data has bash shell
 sudo sed -i "s/^www-data:x.*/www-data:x:33:33:www-data:\/var\/www:\/bin\/bash/g" /etc/passwd
 
@@ -523,16 +530,22 @@ sudo chown -R www-data:www-data /var/www$rpicamdir
 sudo cp etc/sudoers.d/RPI_Cam_Web_Interface /etc/sudoers.d/
 sudo chmod 440 /etc/sudoers.d/RPI_Cam_Web_Interface
 
-# Stretch has glibc 2.24, the current raspimjpeg build needs 2.28
-raspimjpegbin=bin/raspimjpeg
-if [ "$VERSION" -eq 9 ]; then
-   raspimjpegbin=bin/raspimjpeg-stretch
-fi
-sudo mkdir -p /opt/vc/bin
-sudo cp $raspimjpegbin /opt/vc/bin/raspimjpeg
-sudo chmod 755 /opt/vc/bin/raspimjpeg
-if [ ! -e /usr/bin/raspimjpeg ]; then
-   sudo ln -s /opt/vc/bin/raspimjpeg /usr/bin/raspimjpeg
+fn_select_camera_backend
+if [ "$backend" = "raspimjpeg" ]; then
+   fn_install_mp4box
+   fn_install_mmal_libs
+   # Stretch has glibc 2.24, the current raspimjpeg build needs 2.28
+   raspimjpegbin=bin/raspimjpeg
+   if [ "$VERSION" -eq 9 ]; then
+      raspimjpegbin=bin/raspimjpeg-stretch
+   fi
+   sudo mkdir -p /opt/vc/bin
+   sudo cp $raspimjpegbin /opt/vc/bin/raspimjpeg
+   sudo chmod 755 /opt/vc/bin/raspimjpeg
+   sudo ln -sf /opt/vc/bin/raspimjpeg /usr/bin/raspimjpeg
+   sudo rm -f /dev/shm/mjpeg/camera_info.json
+else
+   fn_install_rpicamd
 fi
 
 sed -e "s/www/www$rpicamdirEsc/" etc/raspimjpeg/raspimjpeg.1 > etc/raspimjpeg/raspimjpeg

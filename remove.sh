@@ -122,6 +122,7 @@ else
 fi
 sudo rm /etc/sudoers.d/RPI_Cam_Web_Interface
 sudo rm /usr/bin/raspimjpeg
+sudo rm -rf /opt/rpicam
 sudo rm /etc/raspimjpeg
 fn_autostart_disable
 

@@ -3,10 +3,11 @@
 Web interface for the Raspberry Pi camera: live view, video, photos, timelapse, motion detection,
 scheduling and a media gallery. This fork modernises the user interface of the
 [original RPi Cam Web Interface](https://github.com/silvanmelchior/RPi_Cam_Web_Interface) and fixes
-a number of bugs and security problems. The camera backend (`raspimjpeg`) and its command protocol
-are unchanged, so existing setups, macros and integrations keep working.
+a number of bugs and security problems. The new camera daemon `rpicamd` brings support for current
+boards and cameras (Pi 5, Camera Module 3, 64-bit Raspberry Pi OS, USB webcams). The command protocol
+is unchanged, so existing setups, macros and integrations keep working.
 
-Current version: **7.0.1** – see [CHANGELOG.md](CHANGELOG.md).
+Current version: **7.1.0** – see [CHANGELOG.md](CHANGELOG.md).
 
 ![Live view](docs/screenshots/live-desktop.jpg)
 
@@ -28,74 +29,54 @@ Current version: **7.0.1** – see [CHANGELOG.md](CHANGELOG.md).
   searchable command reference
 - No external frameworks or CDNs – everything works offline on the Pi
 
-## Compatibility – please read
+## Camera support
 
-The camera is driven by `raspimjpeg`, a 32-bit program that uses the **legacy MMAL camera stack** of the
-Raspberry Pi firmware. It needs the VideoCore GPU of a Raspberry Pi, a CSI camera module and the
-VideoCore userland libraries. In short, the camera only works with:
+The web interface talks to a camera daemon through a FIFO. `install.sh` installs one of two daemons
+that understand the same commands:
 
-- a **Raspberry Pi 1–4, Zero (v1.3 or later), Zero 2 W or Compute Module 1–4**,
-- **32-bit Raspberry Pi OS Buster or Bullseye** (Bullseye with *Legacy Camera* enabled in `raspi-config`),
-- **Camera Module 1 (OV5647), Camera Module 2 (IMX219) or the HQ Camera (IMX477)**, or a third-party
-  board with one of these sensors that the firmware accepts.
+- **rpicamd** (`backend/rpicamd.py`, new): uses **libcamera/Picamera2** for every Raspberry Pi camera on
+  every Raspberry Pi with Raspberry Pi OS Bullseye or newer (32- and 64-bit), and **V4L2** for USB webcams
+  and cameras of other boards.
+- **raspimjpeg** (original program, legacy MMAL camera stack): used on Buster, and on Bullseye when
+  *Legacy Camera* is enabled in `raspi-config`.
 
-Everything else (Pi 5, 64-bit OS, Bookworm/Trixie, Camera Module 3, most Arducam cameras, USB webcams,
-non-Raspberry-Pi boards) does not work with the current backend. The web interface itself installs on
-those systems too, and `install.sh` warns when the camera can not work. Supporting them needs a new
-libcamera/Picamera2 based backend that speaks the same FIFO command protocol – this is the main open
-item of this fork.
+`camerabackend="rpicamd"` or `"raspimjpeg"` in `config.txt` overrides the automatic choice.
 
 ### Boards
 
 | Board | Camera | Notes |
 | --- | --- | --- |
-| Pi 1 A/B/A+/B+, Pi 2 B, Pi 3 A+/B/B+ | ✅ | `gpu_mem` at least 128; the Pi 1 is slow for this interface |
-| Pi 4 B | ✅ | Bullseye: *Legacy Camera* switches to the fkms display driver. If the camera fails with the 64-bit kernel that firmware boots by default, add `arm_64bit=0` to `config.txt` |
-| Pi Zero v1.3, Zero W/WH, Zero 2 W | ✅ | needs the 22-pin Zero camera cable; Zero 2 W needs a fully updated Buster or Bullseye |
-| Compute Module 1, 3, 3+, 4 | ✅ with setup | `dt-blob.bin` (`dt-blob-cam1.bin` or `dt-blob-dualcam.bin`) and the camera adapter/jumpers of the IO board are required. Two cameras: set `camera_num 1` in `/etc/raspimjpeg` to show the camera selector; only one camera runs at a time, no stereo mode |
-| Compute Module 4S | ❓ | Bullseye only, untested |
-| Boards released after 2023 (Pi 4 3 GB, Compute Module 0, Pi 3 B with BCM2837B0) | ❓ | newer than the last firmware released with the legacy stack |
-| Pi Zero v1.2 (first 2015 batch), Pi 400 | ❌ | no camera connector |
-| Pi 5, Pi 500/500+, Compute Module 5 | ❌ | no legacy camera stack and no H.264 hardware encoder |
-| Pico (all versions) | ❌ | microcontroller, no Linux |
-| Clones and other boards: Orange Pi, Banana Pi, Radxa, Libre Computer, ODROID, Tinker Board, Khadas, Pine64, NVIDIA Jetson, CM-compatible modules with other SoCs | ❌ | no VideoCore GPU, no MMAL |
+| Pi 1, 2, 3, Zero, Zero W, Zero 2 W | ✅ | Pi 1 and Zero: keep the video size at 720p or lower |
+| Pi 4 | ✅ | |
+| Pi 5 | ✅ | H.264 is encoded in software (1080p30 works) |
+| Pi 400, Pi 500/500+ | ✅ USB webcam | no camera connector |
+| Compute Module 1, 3, 3+, 4, 4S, 5 | ✅ | camera ports as wired on the IO board; with two cameras choose one in the *Image* tab |
+| First Pi Zero (v1.2, 2015) | ✅ USB webcam | no camera connector |
+| Other boards (Orange Pi, Banana Pi, Radxa, ODROID, Jetson, x86 …) | ✅ USB webcam | CSI cameras of these boards only if their kernel offers a plain V4L2 capture device (set `v4l2_device`) |
 
-### Operating systems
+### Cameras
 
-| System | Camera | Notes |
+| Camera | Works | Notes |
 | --- | --- | --- |
-| Raspberry Pi OS Buster, 32-bit | ✅ | enable the camera in `raspi-config`; end of life since June 2024 |
-| Raspberry Pi OS Bullseye, 32-bit | ✅ | enable *Interface Options > Legacy Camera* in `raspi-config`; Debian 11 LTS ended on 31 Aug 2026. Raspberry Pi Imager's "Legacy" image is now Bookworm, download the archived Bullseye armhf image instead |
-| Raspbian Stretch, 32-bit | ⚠️ | the installer uses the older raspimjpeg 5.9.5 build; no Pi 4, Zero 2 W or HQ Camera without firmware updates |
-| Any 64-bit OS (arm64) | ❌ | the MMAL libraries exist for 32-bit only |
-| Raspberry Pi OS Bookworm, Trixie | ❌ | legacy camera stack removed (the web interface installs) |
-| Ubuntu, DietPi, Armbian etc. on a Raspberry Pi | ❓ | only 32-bit with the VideoCore userland libraries and the `start_x` firmware |
+| Camera Module 1 (OV5647), 2 (IMX219), HQ Camera (IMX477), incl. NoIR | ✅ | rpicamd and raspimjpeg |
+| Camera Module 3 (IMX708), all variants | ✅ rpicamd | autofocus (manual, single, continuous) and lens position in the *Exposure* tab |
+| Global Shutter Camera (IMX296), AI Camera (IMX500 as a normal camera) | ✅ rpicamd | |
+| Arducam and other libcamera cameras (IMX519, 64MP, OV9281, IMX462, IMX708 boards …) | ✅ rpicamd | install the driver/overlay as the vendor describes; when `rpicam-hello --list-cameras` lists the camera, rpicamd can use it |
+| USB/UVC webcams | ✅ rpicamd | brightness, contrast, saturation and sharpness are set with `v4l2-ctl` |
 
-Because every supported OS is past its security support, keep the camera in a trusted network.
+### Differences between the daemons
 
-### Camera modules
+- Only raspimjpeg: image effects, colour effect, video stabilisation, raw layer, image statistics, HDMI
+  preview, H.264 quantisation, watchdog and saving motion vectors. The settings page hides what the
+  running daemon can not do.
+- rpicamd: rotation 0° and 180° plus flips (libcamera has no 90°/270°); motion detection compares
+  pictures on a macroblock grid and uses the same settings (noise, threshold, start/stop frames, mask).
+- Video is recorded at most at 1920×1080 by the hardware encoder of the Pi 1–4.
+- raspimjpeg only works on 32-bit Buster/Bullseye with Camera Module 1/2/HQ; Buster and Bullseye are past
+  their security support, so prefer a current Raspberry Pi OS with rpicamd.
 
-| Camera | Camera | Notes |
-| --- | --- | --- |
-| Camera Module 1 (OV5647), also NoIR | ✅ | stills up to 2592×1944; NoIR: use white balance *Greyworld* |
-| Camera Module 2 (IMX219), also NoIR | ✅ | stills up to 3280×2464 |
-| HQ Camera (IMX477), C/CS and M12 mount | ✅ | stills up to 4056×3040, `gpu_mem=256` recommended; the M12 version was released after the legacy stack and is not officially tested with it |
-| Camera Module 3 (IMX708), all variants | ❌ | libcamera only (also no autofocus support in this project) |
-| Global Shutter Camera (IMX296), AI Camera (IMX500) | ❌ | libcamera only |
-| Third-party OV5647 boards (Arducam, Waveshare and others: NoIR, fisheye, M12, IR-cut) | ✅ | image only; IR-cut and motorized focus need own scripts, e.g. as macros |
-| Third-party IMX219 and IMX477 boards | ⚠️ | on a Pi 1–4 or Zero the firmware rejects boards without Raspberry Pi's authentication chip; on Compute Modules they work. Current Arducam IMX219/477P products are sold for libcamera only |
-| Arducam IMX519, 64MP (Hawkeye/OwlSight), IMX708 boards, OV9281/OV9782/OV2311/OV7251/AR0234, Pivariety cameras (IMX462, IMX290, IMX327 …), ToF and thermal cameras | ❌ | libcamera or V4L2 only |
-| Arducam multi-camera adapter | ⚠️ | one camera at a time, switching needs own macros (GPIO/I2C) |
-| USB/UVC webcams (including Arducam USB cameras) | ❌ | raspimjpeg only drives CSI cameras |
-| HDMI-to-CSI bridges (TC358743) | ❓ | unsupported firmware driver, untested |
-
-### Limits of the legacy stack
-
-- Video is recorded at most at **1920×1080**. raspimjpeg encodes H.264 level 4.0, which covers
-  1080p30; higher frame rates (e.g. 720p90) may drop frames. Stills use the full sensor resolution.
-- The firmware chooses the sensor mode, there is no autofocus and no stereo mode.
-- Resolution presets for each sensor are in `www/uPresets[N|P]-OV5647.html`, `-IMX219.html` and
-  `-IMX477.html` (N = 30 fps, P = 25 fps); copy one to `uPresets.html` in the web folder.
+rpicamd is new. It is tested with a synthetic camera and a simulated Picamera2, not yet on every board
+and camera – please report problems with the board, OS, camera and the log (`scheduleLog.txt`).
 
 ## Installation
 
@@ -106,9 +87,8 @@ cd RPi_Cam_Web_Interface_Rework
 ./install.sh          # interactive, ./install.sh q for a quiet install with the saved config.txt
 ```
 
-On Bullseye enable *Interface Options > Legacy Camera* in `sudo raspi-config` and reboot first.
-At the end the installer checks that raspimjpeg can load its libraries and that the firmware detects a
-camera, and tells you what is missing.
+The installer picks the camera daemon (see *Camera support*), installs what it needs (Picamera2,
+OpenCV, ffmpeg, v4l-utils where available) and checks at the end that a camera is found.
 
 The installer asks for the sub folder (default `html`, i.e. `http://<pi>/html/`), web server
 (apache, nginx or lighttpd), port, an optional user/password and the PHP version (detected
@@ -124,6 +104,7 @@ To convert timelapses into videos from the media page, install ffmpeg: `sudo apt
 | File (in the web folder) | Purpose |
 | --- | --- |
 | `raspimjpeg` / `uconfig` | camera defaults / settings changed in the interface |
+| `/etc/raspimjpeg` (rpicamd only) | optional `v4l2_device /dev/videoN` (USB camera to use), `ffmpeg_encoder` (default `libx264`) |
 | `userLevel` | user levels for authenticated users (`name:level`, see `userLevelExample`) |
 | `userbuttons` | up to 12 quick action buttons running macros (see `userbuttonsD`) |
 | `uPresets.html` | own resolution presets (examples per camera: `uPresets*-OV5647/IMX219/IMX477.html`) |

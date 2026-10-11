@@ -1,5 +1,21 @@
 # Changelog
 
+## 7.1.0 – rpicamd: support for current boards and cameras
+
+- New camera daemon `backend/rpicamd.py`, a drop-in replacement for raspimjpeg (same FIFO commands,
+  config files, status file, preview, file names and thumbnails, so the web interface and scheduler are
+  unchanged). Backends: Picamera2/libcamera (Pi 1–5, Zero, Compute Modules; Camera Module 1/2/3, HQ,
+  Global Shutter, AI Camera, Arducam and other libcamera cameras; Bullseye or newer, 32/64-bit),
+  V4L2 for USB webcams and other boards, and a synthetic test camera.
+- Supports video with pre-record buffer, split and timed recording, mp4 boxing with ffmpeg (MP4Box as
+  fallback), stills (also during recording), timelapse, annotation with custom colours, motion detection
+  with the scheduler, job macros, user config and camera selection on boards with two cameras.
+- Autofocus mode and lens position settings for autofocus cameras (e.g. Camera Module 3).
+- The settings page reads the capabilities of the running daemon (`camera_info.json`) and hides settings
+  it can not apply; the *System* tab shows the camera model and daemon.
+- install.sh chooses the daemon automatically (raspimjpeg only on Buster and on Bullseye with Legacy Camera),
+  `camerabackend` in config.txt overrides it.
+
 ## 7.0.1 – Hardware compatibility
 
 - README: detailed compatibility tables for boards, operating systems, official and third-party cameras,

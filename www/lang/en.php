@@ -76,7 +76,13 @@ return array(
 	's.roi_hint' => 'Digital zoom. Values 0–65536, full sensor is 0 / 0 / 65536 / 65536.',
 	's.raw_layer' => 'Raw Bayer layer',
 	's.stat_pass' => 'Image statistics',
-	's.camera_num' => 'Camera (Compute Module)',
+	's.camera_num' => 'Camera',
+	's.af_mode' => 'Focus',
+	's.af_mode_hint' => 'Auto focuses once, Continuous follows the picture. Manual uses the lens position.',
+	's.lens_position' => 'Lens position (dioptres)',
+	's.lens_position_hint' => '0 = infinity, 1 = 1 m, 10 = 10 cm. Only used with manual focus.',
+	's.camera_info' => 'Camera: {model} · {backend}',
+	's.camera_legacy' => 'Camera daemon: raspimjpeg (legacy camera stack)',
 
 	// settings: exposure
 	's.exposure_mode' => 'Exposure mode',
@@ -176,6 +182,9 @@ return array(
 	'opt.both' => 'Both',
 	'opt.first' => 'First',
 	'opt.second' => 'Second',
+	'opt.af_manual' => 'Manual',
+	'opt.af_auto' => 'Auto (once)',
+	'opt.af_continuous' => 'Continuous',
 
 	// media
 	'media.title' => 'Media',

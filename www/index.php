@@ -14,6 +14,7 @@
 	$options_bo = array(t('off') => '0', t('opt.background') => '2');
 	$options_mx = array(t('opt.internal') => '0', t('opt.external') => '1', t('opt.monitor') => '2');
 	$options_cn = array(t('opt.first') => '1', t('opt.second') => '2');
+	$options_af = array(t('opt.af_manual') => '0', t('opt.af_auto') => '1', t('opt.af_continuous') => '2');
 
 	$userLevel = currentUserLevel();
 	$user = getUser();
@@ -81,7 +82,27 @@
 		}
 	}
 
+	// capabilities written by the rpicamd camera daemon; missing for the legacy raspimjpeg
+	function cameraInfo() {
+		static $info = false;
+		if ($info === false) {
+			$info = null;
+			$file = dirname(cfg('status_file', '/dev/shm/mjpeg/status_mjpeg.txt')) . '/camera_info.json';
+			if (is_readable($file)) {
+				$data = json_decode((string)@file_get_contents($file), true);
+				if (is_array($data)) $info = $data;
+			}
+		}
+		return $info;
+	}
+
+	function supported($cmd) {
+		$info = cameraInfo();
+		return !$info || empty($info['unsupported']) || !in_array($cmd, $info['unsupported'], true);
+	}
+
 	function field($def) {
+		if (isset($def['cmd']) && !supported($def['cmd'])) return;
 		$wide = !empty($def['wide']) ? ' wide' : '';
 		echo '<div class="field' . $wide . '">';
 		echo '<label class="field-label" for="' . h($def['id']) . '">' . h(t($def['label'])) . icon('check', 'applied-mark') . '</label>';
@@ -98,6 +119,7 @@
 
 	// several values sent together as one command
 	function group($cmd, $label, $fields, $hint = null, $extra = '') {
+		if (!supported($cmd)) return;
 		$ids = array();
 		foreach ($fields as $f) $ids[] = $f['id'];
 		echo '<div class="field-group" data-group-cmd="' . h($cmd) . '" data-fields="' . h(implode(' ', $ids)) . '" data-label="' . h(t($label)) . '">';
@@ -319,7 +341,8 @@
 			), 's.roi_hint');
 			field(array('id' => 'raw_layer', 'cmd' => 'rl', 'label' => 's.raw_layer', 'type' => 'toggle'));
 			field(array('id' => 'stat_pass', 'cmd' => 'st', 'label' => 's.stat_pass', 'type' => 'toggle'));
-			if (cfg('camera_num') > 0) {
+			$camInfo = cameraInfo();
+			if (cfg('camera_num') > 0 || ($camInfo && isset($camInfo['cameras']) && $camInfo['cameras'] > 1)) {
 				field(array('id' => 'camera_num', 'cmd' => 'cn', 'label' => 's.camera_num', 'type' => 'select', 'options' => $options_cn));
 			}
 ?>
@@ -332,6 +355,10 @@
 			field(array('id' => 'exposure_compensation', 'cmd' => 'ec', 'label' => 's.exposure_compensation', 'type' => 'range', 'min' => -10, 'max' => 10, 'default' => 0));
 			field(array('id' => 'iso', 'cmd' => 'is', 'label' => 's.iso', 'type' => 'number', 'min' => 0, 'max' => 800, 'step' => 1, 'default' => 0, 'hint' => 's.iso_hint'));
 			field(array('id' => 'shutter_speed', 'cmd' => 'ss', 'label' => 's.shutter_speed', 'type' => 'number', 'min' => 0, 'step' => 1, 'default' => 0, 'hint' => 's.shutter_speed_hint'));
+			if ($camInfo && !empty($camInfo['autofocus'])) {
+				field(array('id' => 'af_mode', 'cmd' => 'af', 'label' => 's.af_mode', 'type' => 'select', 'options' => $options_af, 'hint' => 's.af_mode_hint'));
+				field(array('id' => 'lens_position', 'cmd' => 'lp', 'label' => 's.lens_position', 'type' => 'number', 'min' => 0, 'max' => 32, 'step' => 0.1, 'hint' => 's.lens_position_hint'));
+			}
 			field(array('id' => 'white_balance', 'cmd' => 'wb', 'label' => 's.white_balance', 'type' => 'select', 'options' => $options_wb));
 			group('ag', 's.ag', array(
 				array('id' => 'ag_r', 'key' => 'autowbgain_r', 'label' => 's.autowbgain_r', 'type' => 'number', 'min' => 0, 'max' => 800),
@@ -454,7 +481,8 @@
 					<li><a href="https://elinux.org/RPi-Cam-Web-Interface" target="_blank" rel="noopener"><?php echo icon('book'); ?>Wiki</a></li>
 					<li><a href="https://forums.raspberrypi.com/viewtopic.php?t=63276" target="_blank" rel="noopener"><?php echo icon('message'); ?>Forum</a></li>
 				</ul>
-				<p class="muted small" style="margin-top:10px"><?php echo h(CAM_STRING); ?></p>
+				<p class="muted small" style="margin-top:10px"><?php echo h(CAM_STRING); ?><br>
+					<?php if ($camInfo) { echo h(t('s.camera_info', array('model' => isset($camInfo['model']) ? $camInfo['model'] : '?', 'backend' => (isset($camInfo['backend']) ? $camInfo['backend'] : '?') . ', ' . (isset($camInfo['daemon']) ? $camInfo['daemon'] : '')))); } else { et('s.camera_legacy'); } ?></p>
 			</div>
 		</div>
 	</section>
